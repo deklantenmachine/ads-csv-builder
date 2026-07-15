@@ -69,15 +69,25 @@ def _replace_exact(series: pd.Series, old: str, new: str) -> pd.Series:
     return series.apply(_safe)
 
 
-def _fix_labels(series: pd.Series, old_net: str, new_net: str) -> pd.Series:
-    def _safe(val):
+def _ensure_netnummer_label(df: pd.DataFrame, net: str) -> pd.DataFrame:
+    """Voeg 'Netnummer {net}' toe aan Labels voor alle campagne/ad group/keyword/ad/sitelink rijen."""
+    label = f"Netnummer {net}"
+
+    def _add(val):
         if pd.isna(val) or str(val).strip() == "":
-            return val
-        s = str(val)
+            return label
+        s = str(val).strip()
         if "Netnummer" in s:
-            return s.replace(f"Netnummer {old_net}", f"Netnummer {new_net}")
-        return s
-    return series.apply(_safe)
+            return re.sub(r"Netnummer \S+", label, s)
+        return f"{s};{label}"
+
+    has_campaign = df["Campaign"].notna() & (df["Campaign"].astype(str).str.strip() != "")
+    has_location = df["Location"].notna() & (df["Location"].astype(str).str.strip() != "")
+    mask = has_campaign & ~has_location
+
+    df = df.copy()
+    df.loc[mask, "Labels"] = df.loc[mask, "Labels"].apply(_add)
+    return df
 
 
 def _parse_locations(raw: str) -> list[tuple[str, str]]:
@@ -172,11 +182,13 @@ def load_variants(xlsx_path: str) -> dict:
 
 
 def _resolve_name(lange_raw: str, korte_naam: str, lange_naam: str, name_max_len: int | None) -> str:
-    """Vervang 'Korte bedrijfsnaam' / 'Lange bedrijfsnaam' in de lange-variant tekst."""
+    """Vervang naam-placeholders in de lange-variant tekst (enkele quotes én vierkante haken)."""
     effective_lange = korte_naam if (name_max_len and len(lange_naam) > name_max_len) else lange_naam
     result = lange_raw
     result = result.replace("'Lange bedrijfsnaam'", effective_lange)
+    result = result.replace("[Lange bedrijfsnaam]", effective_lange)
     result = result.replace("'Korte bedrijfsnaam'", korte_naam)
+    result = result.replace("[Korte bedrijfsnaam]", korte_naam)
     return result
 
 
@@ -210,7 +222,8 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                 return s
             korte = merk_info.get("korte_naam", "")
             lange = merk_info.get("lange_naam", "")
-            return _resolve_name(lange_raw, korte, lange, rule.get("name_max_len"))
+            result = _resolve_name(lange_raw, korte, lange, rule.get("name_max_len"))
+            return _case_replace(result, TEMPLATE_CITY, city)
 
         if r == "city":
             threshold    = rule.get("threshold", 999)
@@ -224,7 +237,7 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                     result = _resolve_name(lange_raw, korte, lange, name_max_len)
                 else:
                     result = lange_raw
-                return result
+                return _case_replace(result, TEMPLATE_CITY, city)
 
     # geen variant match: standaard plaatsnaam-vervanging
     result = _case_replace(s, TEMPLATE_CITY, city)
@@ -331,7 +344,9 @@ def process_city(
     if not net:   net   = TEMPLATE_NET
     if not phone: phone = TEMPLATE_PHONE
 
-    targeting_locs = _parse_locations(str(row.get("Locatie", "")))
+    targeting_raw_val = str(row.get("Locatie", "")).strip()
+    skip_lokaal    = targeting_raw_val.lower() == "niet in data"
+    targeting_locs = _parse_locations(targeting_raw_val) if not skip_lokaal else []
     negative_locs  = _parse_locations(str(row.get("Negatieve locaties", "")))
 
     today = _today_str()
@@ -349,9 +364,6 @@ def process_city(
         if ad_schedule:
             mask = df["Ad Schedule"].notna() & (df["Ad Schedule"].astype(str).str.strip() != "")
             df.loc[mask, "Ad Schedule"] = ad_schedule
-
-        # Labels
-        df["Labels"] = _fix_labels(df["Labels"], TEMPLATE_NET, net)
 
         # Phone Number
         template_phone = TEMPLATE_PHONE
@@ -422,6 +434,10 @@ def process_city(
                             else v
                         )
 
+    # Labels: zorg dat Netnummer {net} aanwezig is op alle niveaus
+    lok = _ensure_netnummer_label(lok, net)
+    sta = _ensure_netnummer_label(sta, net)
+
     # + Stad specifiek
     sta["Ad Group"] = _replace_in_col(sta["Ad Group"], TEMPLATE_CITY, city)
     sta["Keyword"]  = _replace_in_col(sta["Keyword"],  TEMPLATE_CITY, city)
@@ -438,8 +454,12 @@ def process_city(
     # Lokaal specifiek
     lok["Campaign"] = _replace_in_col(lok["Campaign"], TEMPLATE_CITY, city)
 
+    # Lokale campagne overslaan als locatiedata ontbreekt
+    if skip_lokaal:
+        return df_lokaal.head(0).copy(), sta
+
     # Locatierijen
-    targeting_raw = str(row.get("Locatie", "")).strip()
+    targeting_raw = targeting_raw_val
     if targeting_locs or negative_locs:
         loc_filled       = lok["Location"].notna() & (lok["Location"].astype(str).str.strip() != "")
         template_loc_row = lok[loc_filled].iloc[0] if loc_filled.any() else lok.iloc[0]
@@ -513,16 +533,19 @@ def build_all(
 
         if klant not in results:
             results[klant] = {"lokaal": [], "stad": []}
-        results[klant]["lokaal"].append(lok_df)
+        if len(lok_df) > 0:
+            results[klant]["lokaal"].append(lok_df)
         results[klant]["stad"].append(sta_df)
 
-    merged = {
-        klant: {
-            "lokaal": pd.concat(parts["lokaal"], ignore_index=True),
-            "stad":   pd.concat(parts["stad"],   ignore_index=True),
+    merged = {}
+    for klant, parts in results.items():
+        lokaal_frames = parts["lokaal"]
+        stad_frames   = parts["stad"]
+        merged[klant] = {
+            "lokaal": pd.concat(lokaal_frames, ignore_index=True) if lokaal_frames
+                      else pd.read_csv(lokaal_path, sep=SEP, encoding=ENCODING, low_memory=False).head(0),
+            "stad":   pd.concat(stad_frames, ignore_index=True),
         }
-        for klant, parts in results.items()
-    }
 
     return merged, errors
 
