@@ -14,12 +14,18 @@ import requests
 
 # ── constanten sjabloon ──────────────────────────────────────────────────────
 
-TEMPLATE_CITY    = "Groningen"
-TEMPLATE_PHONE   = "050-7820442"
-TEMPLATE_NET     = "050"
-TEMPLATE_COMPANY = "DCN"          # bedrijfsnaam placeholder in eigen merk CSV/Excel
-TEMPLATE_DOMAIN  = "dcn-dakdekkers.nl"  # domein in eigen merk sjabloon-CSV
-TEMPLATE_USP     = "Familiebedrijf Sinds 1966"  # USP placeholder in eigen merk CSV
+TEMPLATE_CITY           = "Groningen"
+TEMPLATE_PHONE          = "050-7820442"
+TEMPLATE_NET            = "050"
+TEMPLATE_COMPANY        = "DCN"                  # bedrijfsnaam placeholder in eigen merk CSV/Excel
+TEMPLATE_DOMAIN         = "dcn-dakdekkers.nl"    # domein in eigen merk sjabloon-CSV
+TEMPLATE_USP            = "Familiebedrijf Sinds 1966"  # USP placeholder in eigen merk CSV
+TEMPLATE_REVIEW_SCORE   = "9,6"                  # review score in portaal Excel-varianten
+TEMPLATE_JAREN_GARANTIE = "10"                   # jaren garantie in portaal Excel-varianten
+
+# Genormaliseerde placeholders voor variant-lookup (lowercase)
+_KEY_REVIEW = "[reviewscore]"
+_KEY_JAREN  = "[jarengarantie]"
 
 SEP      = ";"
 ENCODING = "utf-8-sig"
@@ -170,9 +176,12 @@ def load_variants(xlsx_path: str) -> dict:
 
         # normaliseer de lookup-sleutel
         key = korte
-        key = re.sub(r"'?Plaats'?", TEMPLATE_CITY, key)   # plaatsnaam placeholder
+        key = re.sub(r"'?Plaats'?", TEMPLATE_CITY, key)       # plaatsnaam placeholder
         key = key.replace(TEMPLATE_COMPANY, "[Bedrijfsnaam]")  # bedrijfsnaam placeholder
         key = key.lower()
+        # normaliseer portaal-specifieke waarden naar generieke placeholders
+        key = key.replace(TEMPLATE_REVIEW_SCORE, _KEY_REVIEW)
+        key = re.sub(r"\b" + re.escape(TEMPLATE_JAREN_GARANTIE) + r"\b jaar", _KEY_JAREN + " jaar", key)
 
         lange_val = lange if lange and lange != "nan" else None
 
@@ -203,7 +212,8 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
         return val
 
     s = str(val)
-    key = s.lower()
+    # normaliseer lookup-sleutel: eigen merk placeholders → zelfde vorm als Excel-sleutels
+    key = s.lower().replace("[reviewscore]", _KEY_REVIEW).replace("[jarengarantie]", _KEY_JAREN)
 
     if key in variants:
         entry     = variants[key]
@@ -223,6 +233,7 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
             korte = merk_info.get("korte_naam", "")
             lange = merk_info.get("lange_naam", "")
             result = _resolve_name(lange_raw, korte, lange, rule.get("name_max_len"))
+            result = _apply_portaal_values(result, merk_info)
             return _case_replace(result, TEMPLATE_CITY, city)
 
         if r == "city":
@@ -235,6 +246,7 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                     korte = merk_info.get("korte_naam", "")
                     lange = merk_info.get("lange_naam", "")
                     result = _resolve_name(lange_raw, korte, lange, name_max_len)
+                    result = _apply_portaal_values(result, merk_info)
                 else:
                     result = lange_raw
                 return _case_replace(result, TEMPLATE_CITY, city)
@@ -253,12 +265,23 @@ def _apply_eigen_placeholders(text: str, merk_info: dict, city: str) -> str:
     """Vervang [Bedrijfsnaam], [ReviewScore], [JarenGarantie] in één string."""
     korte = merk_info.get("korte_naam", "")
     lange = merk_info.get("lange_naam", "")
-    # gebruik lange naam tenzij die te lang is (>20 tekens)
     bedrijfsnaam = korte if (lange and len(lange) > 20) else (lange or korte)
 
     text = text.replace("[Bedrijfsnaam]", bedrijfsnaam)
     text = text.replace("[ReviewScore]",  merk_info.get("review_score",    ""))
     text = text.replace("[JarenGarantie]", merk_info.get("jaren_garantie", ""))
+    return text
+
+
+def _apply_portaal_values(text: str, merk_info: dict) -> str:
+    """Vervang portaal-specifieke vaste waarden in een lange variant door eigen merk waarden."""
+    rs = merk_info.get("review_score", "").strip()
+    jg = merk_info.get("jaren_garantie", "").strip()
+    if rs and rs != TEMPLATE_REVIEW_SCORE:
+        text = text.replace(TEMPLATE_REVIEW_SCORE, rs)
+    if jg and jg != TEMPLATE_JAREN_GARANTIE:
+        # vervang "10 jaar" / "10 Jaar" maar niet "100%" etc.
+        text = re.sub(r"\b" + re.escape(TEMPLATE_JAREN_GARANTIE) + r"\b(?= [Jj]aar)", jg, text)
     return text
 
 
@@ -420,18 +443,20 @@ def process_city(
             else:
                 df[col] = _replace_in_col(df[col], TEMPLATE_CITY, city)
 
-        # eigen merk zonder varianten: vervang USP-placeholder
+        # vervang USP-placeholder (case-insensitief, ook in lange varianten)
         if merk_info:
             usp = merk_info.get("usp", "").strip()
             usp_fallback = merk_info.get("usp_fallback", "")
             usp_val = usp or usp_fallback
             if usp_val:
+                _usp_pattern = re.compile(re.escape(TEMPLATE_USP), re.IGNORECASE)
                 for col in AD_TEXT_COLS:
                     if col in df.columns:
                         df[col] = df[col].apply(
-                            lambda v: str(v).replace(TEMPLATE_USP, usp_val)
-                            if pd.notna(v) and TEMPLATE_USP.lower() in str(v).lower()
-                            else v
+                            lambda v, pat=_usp_pattern, rep=usp_val:
+                                pat.sub(rep, str(v))
+                                if pd.notna(v) and TEMPLATE_USP.lower() in str(v).lower()
+                                else v
                         )
 
     # Labels: zorg dat Netnummer {net} aanwezig is op alle niveaus
