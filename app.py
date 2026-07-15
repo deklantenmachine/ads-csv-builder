@@ -20,15 +20,17 @@ for key, default in [("results", None), ("errors", []), ("log", []),
 # ── resultaten-scherm ─────────────────────────────────────────────────────────
 if st.session_state.results is not None:
     if st.button("↩ Opnieuw beginnen"):
-        for key in ("results", "errors", "log", "klanten", "sheet_loaded"):
-            st.session_state[key] = [] if key in ("errors", "log", "klanten") else (None if key == "results" else False)
+        for k in ("results", "errors", "log", "klanten", "sheet_loaded"):
+            st.session_state[k] = [] if k in ("errors", "log", "klanten") \
+                                   else (None if k == "results" else False)
         st.rerun()
 
     merged = st.session_state.results
     errors = st.session_state.errors
     log    = st.session_state.log
 
-    st.success(f"{sum(len(v['lokaal']) for v in merged.values())} rijen gegenereerd voor {len(merged)} klant(en).")
+    st.success(f"{sum(len(v['lokaal']) for v in merged.values())} rijen gegenereerd "
+               f"voor {len(merged)} klant(en).")
 
     if errors:
         st.warning("**Fouten:**\n" + "\n".join(errors))
@@ -50,34 +52,74 @@ if st.session_state.results is not None:
     rows = [{"Status": line} for line in log] + [{"Status": f"❌ {e}"} for e in errors]
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
     st.stop()
 
 # ── invoerformulier ───────────────────────────────────────────────────────────
 
-st.header("1. Sjabloon-bestanden")
+st.header("1. Merktype")
+merk_type = st.radio(
+    "Kies het type account",
+    ["Overkoepelend merk (portaal)", "Eigen merk"],
+    horizontal=True,
+)
+eigen_merk = merk_type == "Eigen merk"
+
+# Eigen merk velden
+merk_info = None
+if eigen_merk:
+    st.subheader("Klantgegevens")
+    col1, col2 = st.columns(2)
+    with col1:
+        korte_naam     = st.text_input("Korte bedrijfsnaam", placeholder="DCN")
+        review_score   = st.text_input("Review score", placeholder="9.2")
+    with col2:
+        lange_naam     = st.text_input("Lange bedrijfsnaam", placeholder="DCN Dakdekkers")
+        jaren_garantie = st.text_input("Jaren garantie", placeholder="10")
+
+    usp = st.text_input(
+        "Overige USP (leeg = fallback uit variantenbestand)",
+        placeholder="bijv. Al 30 jaar vakmanschap"
+    )
+
+    merk_info = {
+        "korte_naam":     korte_naam.strip(),
+        "lange_naam":     lange_naam.strip(),
+        "review_score":   review_score.strip(),
+        "jaren_garantie": jaren_garantie.strip(),
+        "usp":            usp.strip(),
+        "usp_fallback":   "100% Tevreden? Dan Wij Ook",  # fallback uit Excel
+    }
+
+st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
 with col1:
-    lokaal_file = st.file_uploader("dak_lokaal.csv", type="csv", key="lokaal")
+    lokaal_file = st.file_uploader(
+        "Lokaal sjabloon (.csv)", type="csv", key="lokaal",
+        help="dak_lokaal.csv of eigen merk lokaal sjabloon"
+    )
 with col2:
-    stad_file = st.file_uploader("dak + stad.csv", type="csv", key="stad")
+    stad_file = st.file_uploader(
+        "+ Stad sjabloon (.csv)", type="csv", key="stad",
+        help="dak + stad.csv of eigen merk stad sjabloon"
+    )
 
-variants_file = st.file_uploader("Varianten plaatsnamen (optioneel .xlsx)", type="xlsx", key="variants")
+variants_file = st.file_uploader(
+    "Varianten plaatsnamen (optioneel .xlsx)", type="xlsx", key="variants"
+)
 
-st.header("2. Google Sheets")
+st.header("3. Google Sheets")
 sheet_url  = st.text_input(
     "URL van het Google Sheets (deelbaar via 'Iedereen met de link')",
     placeholder="https://docs.google.com/spreadsheets/d/…/edit",
 )
 sheet_name = st.text_input("Tabblad naam", value="DakPro NL Plaatsen")
 
-# ── klanten laden ─────────────────────────────────────────────────────────────
 if sheet_url.strip():
     if st.button("🔄 Laad klanten uit sheet"):
         try:
             df_sheet = load_sheet(sheet_url, sheet_name)
             klanten_in_sheet = sorted(
-                {str(k).strip() for k in df_sheet["Klant"].dropna()
+                {str(k).strip() for k in df_sheet.get("Klant", pd.Series()).dropna()
                  if str(k).strip() not in ("", "nan")}
             )
             st.session_state.klanten      = klanten_in_sheet
@@ -86,7 +128,7 @@ if sheet_url.strip():
             st.error(f"Kon sheet niet laden: {e}")
 
 if st.session_state.sheet_loaded:
-    st.header("3. Klant selecteren")
+    st.header("4. Klant selecteren")
     geselecteerde_klanten = st.multiselect(
         "Voor welke klant(en) wil je campagnes genereren?",
         options=st.session_state.klanten,
@@ -97,7 +139,14 @@ else:
     if sheet_url.strip():
         st.info("Klik op 'Laad klanten uit sheet' om klanten te selecteren.")
 
-st.header("4. Genereer")
+st.header("5. Ad Schedule" if not st.session_state.sheet_loaded else "5. Ad Schedule")
+ad_schedule_override = st.text_area(
+    "Ad Schedule (leeg = waarde uit sheet wordt gebruikt)",
+    placeholder="(Monday[08:00-17:00]);(Tuesday[08:00-17:00]);...",
+    height=68,
+)
+
+st.header("6. Genereer")
 
 if st.button("🚀 Genereer campagnes", type="primary"):
     if not lokaal_file or not stad_file:
@@ -106,6 +155,8 @@ if st.button("🚀 Genereer campagnes", type="primary"):
         st.error("Vul de Google Sheets URL in.")
     elif not geselecteerde_klanten:
         st.error("Selecteer minimaal één klant.")
+    elif eigen_merk and not merk_info.get("korte_naam"):
+        st.error("Vul minimaal de korte bedrijfsnaam in.")
     else:
         with tempfile.TemporaryDirectory() as tmp:
             lok_path = os.path.join(tmp, "lokaal.csv")
@@ -139,6 +190,8 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                     sheet_name=sheet_name,
                     variants_path=var_path,
                     klant_filter=geselecteerde_klanten,
+                    merk_info=merk_info if eigen_merk else None,
+                    ad_schedule_override=ad_schedule_override,
                     progress_cb=progress_cb,
                 )
             except Exception as exc:
