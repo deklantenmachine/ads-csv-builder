@@ -176,11 +176,13 @@ if st.button("🚀 Genereer campagnes", type="primary"):
             status_text  = st.empty()
             log_lines: list[str] = []
 
-            def progress_cb(city, i, total, skipped=False):
+            def progress_cb(city, i, total, skipped=False, stad_excluded=False):
                 progress_bar.progress(int((i / total) * 100))
                 status_text.text(f"Verwerken: {city} ({i+1}/{total})")
                 if skipped:
                     log_lines.append(f"⏭ {city} (overgeslagen — dubbele plaatsnaam)")
+                elif stad_excluded:
+                    log_lines.append(f"✅ {city} (alleen lokaal — geen +Stad campagne)")
                 else:
                     log_lines.append(f"✅ {city}")
 

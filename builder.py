@@ -27,6 +27,12 @@ TEMPLATE_JAREN_GARANTIE = "10"                   # jaren garantie in portaal Exc
 _KEY_REVIEW = "[reviewscore]"
 _KEY_JAREN  = "[jarengarantie]"
 
+# Plaatsen die Google als algemeen woord herkent → nooit +Stad campagne genereren
+EXCLUDED_STAD_CITIES: frozenset[str] = frozenset({
+    "huizen", "zetten", "best", "dieren", "echt",
+    "hoornaar", "heel", "enter", "zeeland", "noorden",
+})
+
 SEP      = ";"
 ENCODING = "utf-8-sig"
 
@@ -271,6 +277,7 @@ def _apply_eigen_placeholders(text: str, merk_info: dict, city: str) -> str:
     text = text.replace("[ReviewScore]",  merk_info.get("review_score",    ""))
     text = text.replace("[JarenGarantie]", merk_info.get("jaren_garantie", ""))
     return text
+
 
 
 def _apply_portaal_values(text: str, merk_info: dict) -> str:
@@ -546,7 +553,8 @@ def build_all(
             continue
 
         if progress_cb:
-            progress_cb(city, i, total, skipped=False)
+            progress_cb(city, i, total, skipped=False,
+                        stad_excluded=city.lower() in EXCLUDED_STAD_CITIES)
 
         try:
             lok_df, sta_df = process_city(
@@ -560,7 +568,8 @@ def build_all(
             results[klant] = {"lokaal": [], "stad": []}
         if len(lok_df) > 0:
             results[klant]["lokaal"].append(lok_df)
-        results[klant]["stad"].append(sta_df)
+        if city.lower() not in EXCLUDED_STAD_CITIES:
+            results[klant]["stad"].append(sta_df)
 
     merged = {}
     for klant, parts in results.items():
@@ -569,7 +578,8 @@ def build_all(
         merged[klant] = {
             "lokaal": pd.concat(lokaal_frames, ignore_index=True) if lokaal_frames
                       else pd.read_csv(lokaal_path, sep=SEP, encoding=ENCODING, low_memory=False).head(0),
-            "stad":   pd.concat(stad_frames, ignore_index=True),
+            "stad":   pd.concat(stad_frames, ignore_index=True) if stad_frames
+                      else pd.read_csv(stad_path, sep=SEP, encoding=ENCODING, low_memory=False).head(0),
         }
 
     return merged, errors
