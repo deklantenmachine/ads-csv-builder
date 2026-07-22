@@ -5,6 +5,8 @@ Reads parsed advice imports; never modifies templates or bid strategies.
 
 from __future__ import annotations
 
+import difflib
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -42,6 +44,38 @@ class BuildDecision:
     audit_trail:        list[AuditEntry] = field(default_factory=list)
 
 
+_FUZZY_THRESHOLD = 0.60
+_STOP_WORDS = {"de", "den", "der", "het", "een", "en", "of", "van", "voor", "in", "op"}
+
+
+def _normalize_for_fuzzy(name: str) -> str:
+    """Strip punctuation and stop-words for token-based similarity."""
+    tokens = re.sub(r"[^a-z0-9\s]", " ", name).split()
+    return " ".join(t for t in tokens if t not in _STOP_WORDS and len(t) > 1)
+
+
+def _account_similarity(a: str, b: str) -> float:
+    """Combined SequenceMatcher + token-Jaccard similarity on normalized strings."""
+    seq_ratio = difflib.SequenceMatcher(None, a, b).ratio()
+    a_tokens = set(_normalize_for_fuzzy(a).split())
+    b_tokens = set(_normalize_for_fuzzy(b).split())
+    union = a_tokens | b_tokens
+    jaccard = len(a_tokens & b_tokens) / len(union) if union else 0.0
+    return max(seq_ratio, jaccard)
+
+
+def fuzzy_best_account_match(norm_query: str, norm_pool: set[str]) -> tuple[str | None, float]:
+    """Return (best_match, score) from norm_pool, or (None, 0) if below threshold."""
+    best, best_score = None, 0.0
+    for candidate in norm_pool:
+        score = _account_similarity(norm_query, candidate)
+        if score > best_score:
+            best, best_score = candidate, score
+    if best_score >= _FUZZY_THRESHOLD:
+        return best, best_score
+    return None, 0.0
+
+
 def extract_template_bid_strategy(df: pd.DataFrame) -> str:
     """Read bid strategy from template DataFrame column 'Bid Strategy Type'."""
     col = "Bid Strategy Type"
@@ -70,6 +104,21 @@ class CampaignBuildRulesEngine:
         self._supports_manual_cpc = (
             self._strategy.lower() in _MANUAL_CPC_STRATEGIES
         )
+        # Build normalized-account pools for fuzzy matching
+        self._cpc_norm_accounts: set[str] = set()
+        self._cpc_account_map: dict[str, str] = {}   # norm_query → norm_in_file
+        if cpc_import:
+            for r in cpc_import.default_rules:
+                self._cpc_norm_accounts.add(r.normalized_account)
+        self._pause_norm_accounts: set[str] = set()
+        self._pause_account_map: dict[str, str] = {}
+        if pause_import:
+            for r in pause_import.city_place_rules:
+                self._pause_norm_accounts.add(r.normalized_account)
+            for r in pause_import.local_campaign_rules:
+                self._pause_norm_accounts.add(r.normalized_account)
+        # Cache: norm_query → (resolved_norm_account, warning_msg | None)
+        self._account_cache: dict[str, tuple[str | None, str | None]] = {}
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -122,12 +171,16 @@ class CampaignBuildRulesEngine:
         if not self._cpc:
             return []
         warnings = []
+        norm_known = {normalize_name(a) for a in known_accounts}
         for rule in self._cpc.default_rules:
-            if rule.normalized_account not in {normalize_name(a) for a in known_accounts}:
-                warnings.append(
-                    f"CPC-advies: account '{rule.account_name}' uit het adviesbestand "
-                    f"is niet gevonden in de plaatsenlijst."
-                )
+            na = rule.normalized_account
+            if na not in norm_known:
+                _, score = fuzzy_best_account_match(na, norm_known)
+                if score < _FUZZY_THRESHOLD:
+                    warnings.append(
+                        f"CPC-advies: account '{rule.account_name}' uit het adviesbestand "
+                        f"is niet gevonden in de plaatsenlijst."
+                    )
         return warnings
 
     def unmatched_pause_warnings(self, known_cities: set[str]) -> list[str]:
@@ -166,10 +219,26 @@ class CampaignBuildRulesEngine:
             keyword_cpc_cents  = None,
         )
 
+        # Resolve account names (supports fuzzy matching)
+        pause_account, pause_warn = self._resolve_account(
+            norm_account, self._pause_norm_accounts, account,
+        ) if self._pause else (norm_account, None)
+        cpc_account, cpc_warn = self._resolve_account(
+            norm_account, self._cpc_norm_accounts, account,
+        ) if self._cpc else (norm_account, None)
+        if pause_warn:
+            decision.warnings.append(pause_warn)
+        if cpc_warn and cpc_warn != pause_warn:
+            decision.warnings.append(cpc_warn)
+
+        # Use resolved account names in all subsequent lookups
+        eff_pause_account = pause_account or norm_account
+        eff_cpc_account   = cpc_account   or norm_account
+
         # ── Stap 1: pauze- en beëindigingsregels ─────────────────────────────
         if self._pause:
             if campaign_type == CampaignType.REGULAR_CITY:
-                rule = self._find_city_rule(norm_account, norm_city)
+                rule = self._find_city_rule(eff_pause_account, norm_city)
                 if rule:
                     if rule.action == BuildAction.DO_NOT_BUILD:
                         decision.should_build = False
@@ -186,7 +255,7 @@ class CampaignBuildRulesEngine:
                     ))
 
             elif campaign_type == CampaignType.LOCAL:
-                rule = self._find_local_rule(norm_account, norm_city, norm_campaign)
+                rule = self._find_local_rule(eff_pause_account, norm_city, norm_campaign)
                 if rule:
                     if rule.action == BuildAction.DO_NOT_BUILD:
                         decision.should_build = False
@@ -210,7 +279,7 @@ class CampaignBuildRulesEngine:
                 return decision
 
             # ── Stap 3: standaard-CPC ────────────────────────────────────────
-            default_rule = self._find_default(norm_account, campaign_type)
+            default_rule = self._find_default(eff_cpc_account, campaign_type)
             if default_rule:
                 decision.campaign_cpc_cents = default_rule.cpc_in_cents
                 decision.ad_group_cpc_cents = default_rule.cpc_in_cents
@@ -221,13 +290,15 @@ class CampaignBuildRulesEngine:
                     f"€{default_rule.cpc_in_cents/100:.2f}", "CAMPAIGN",
                 ))
             else:
-                decision.warnings.append(
-                    f"Geen CPC-advies gevonden voor account '{account}' / "
-                    f"{campaign_type.value}."
-                )
+                if cpc_account:
+                    decision.warnings.append(
+                        f"Geen CPC-advies gevonden voor account '{account}' / "
+                        f"{campaign_type.value}."
+                    )
+                # else: account not in CPC file at all, already warned via unmatched_cpc_warnings
 
             # ── Stap 4: campagne-uitzondering ─────────────────────────────────
-            camp_exc = self._find_campaign_exc(norm_account, campaign_type, norm_city, norm_campaign)
+            camp_exc = self._find_campaign_exc(eff_cpc_account, campaign_type, norm_city, norm_campaign)
             if camp_exc:
                 decision.campaign_cpc_cents = camp_exc.cpc_in_cents
                 decision.ad_group_cpc_cents = camp_exc.cpc_in_cents
@@ -239,6 +310,34 @@ class CampaignBuildRulesEngine:
                 ))
 
         return decision
+
+    # ── Account resolution (exact → fuzzy) ───────────────────────────────────
+
+    def _resolve_account(
+        self, norm_query: str, pool: set[str], original_name: str,
+    ) -> tuple[str | None, str | None]:
+        """
+        Returns (resolved_norm_account, warning_msg).
+        Exact match → no warning. Fuzzy match above threshold → warning. No match → (None, None).
+        """
+        cache_key = (norm_query, id(pool))
+        if cache_key in self._account_cache:
+            return self._account_cache[cache_key]
+
+        if norm_query in pool:
+            result = norm_query, None
+        else:
+            best, score = fuzzy_best_account_match(norm_query, pool)
+            if best:
+                # find a display name for the matched account
+                result = best, (
+                    f"Account '{original_name}' fuzzy-gematcht op adviesbestand-account "
+                    f"(overeenkomst {score:.0%}). Controleer of dit klopt."
+                )
+            else:
+                result = None, None
+        self._account_cache[cache_key] = result
+        return result
 
     # ── Lookup helpers ────────────────────────────────────────────────────────
 
@@ -306,7 +405,9 @@ class CampaignBuildRulesEngine:
         """Returns (cpc_cents, audit_entry) for an ad group; fallback when no exception."""
         if not self._cpc:
             return fallback_cents, None
-        norm_account = normalize_name(account)
+        raw_norm = normalize_name(account)
+        resolved, _ = self._resolve_account(raw_norm, self._cpc_norm_accounts, account)
+        norm_account = resolved or raw_norm
         norm_ag      = normalize_name(ad_group_name)
         for r in self._cpc.ad_group_exceptions:
             if (r.normalized_account == norm_account
@@ -334,7 +435,9 @@ class CampaignBuildRulesEngine:
         """Returns (cpc_cents, audit_entry) for a keyword; None when no exception."""
         if not self._cpc:
             return None, None
-        norm_account = normalize_name(account)
+        raw_norm = normalize_name(account)
+        resolved, _ = self._resolve_account(raw_norm, self._cpc_norm_accounts, account)
+        norm_account = resolved or raw_norm
         norm_ag      = normalize_name(ad_group_name)
         norm_kw      = normalize_name(keyword_text)
         norm_mt      = match_type.upper()
