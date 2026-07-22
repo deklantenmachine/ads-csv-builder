@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 import pandas as pd
 import requests
 
+from advice_parser import CpcAdviceImport, PauseAdviceImport, CampaignType, normalize_name
+from rules_engine import CampaignBuildRulesEngine, extract_template_bid_strategy
+
 # ── constanten sjabloon ──────────────────────────────────────────────────────
 
 TEMPLATE_CITY           = "Groningen"
@@ -512,6 +515,70 @@ def process_city(
     return lok, sta
 
 
+# ── CPC-toepassing ────────────────────────────────────────────────────────────
+
+def _cents_to_str(cents: int) -> str:
+    """Formatteer integer centen als decimaal getal met punt (Google Ads formaat)."""
+    return f"{cents / 100:.2f}"
+
+
+def _apply_cpc_to_df(
+    df:                 pd.DataFrame,
+    campaign_cpc_cents: int | None,
+    ad_group_cpc_cents: int | None,
+    keyword_cpc_cents:  int | None,
+) -> pd.DataFrame:
+    """
+    Schrijf CPC-bedragen naar de juiste rijen.
+    Rij-identificatie: Campaign, Ad Group, Keyword, Location kolommen.
+    """
+    if not any(v is not None for v in [campaign_cpc_cents, ad_group_cpc_cents, keyword_cpc_cents]):
+        return df
+
+    df = df.copy()
+
+    def _filled(col: str) -> pd.Series:
+        if col not in df.columns:
+            return pd.Series(False, index=df.index)
+        return df[col].notna() & (df[col].astype(str).str.strip() != "")
+
+    has_campaign = _filled("Campaign")
+    has_ad_group = _filled("Ad Group")
+    has_keyword  = _filled("Keyword")
+    has_location = _filled("Location")
+
+    # Campaign-rijen: Campaign gevuld, Ad Group leeg, geen Location
+    campaign_mask = has_campaign & ~has_ad_group & ~has_location
+    # Ad Group-rijen: Campaign + Ad Group gevuld, geen Keyword, geen Location
+    ag_mask = has_campaign & has_ad_group & ~has_keyword & ~has_location
+    # Keyword-rijen: Keyword gevuld
+    kw_mask = has_keyword
+
+    cpc_col = "Default max. CPC"
+    kw_col  = "Max CPC"
+
+    if campaign_cpc_cents is not None and cpc_col in df.columns:
+        df.loc[campaign_mask, cpc_col] = _cents_to_str(campaign_cpc_cents)
+
+    if ad_group_cpc_cents is not None and cpc_col in df.columns:
+        df.loc[ag_mask, cpc_col] = _cents_to_str(ad_group_cpc_cents)
+
+    if keyword_cpc_cents is not None and kw_col in df.columns:
+        df.loc[kw_mask, kw_col] = _cents_to_str(keyword_cpc_cents)
+
+    return df
+
+
+def _force_campaign_status(df: pd.DataFrame, status: str) -> pd.DataFrame:
+    """Forceer Campaign Status op rijen met een ingevuld Campaign-veld."""
+    if "Campaign Status" not in df.columns:
+        return df
+    df = df.copy()
+    mask = df["Campaign"].notna() & (df["Campaign"].astype(str).str.strip() != "")
+    df.loc[mask, "Campaign Status"] = status
+    return df
+
+
 # ── hoofd-functie ─────────────────────────────────────────────────────────────
 
 def build_all(
@@ -523,6 +590,9 @@ def build_all(
     klant_filter:         list[str] | None = None,
     merk_info:            dict | None = None,
     ad_schedule_override: str = "",
+    cpc_import:           CpcAdviceImport | None = None,
+    pause_import:         PauseAdviceImport | None = None,
+    dry_run:              bool = False,
     progress_cb=None,
 ) -> tuple[dict, list[str]]:
 
@@ -535,9 +605,31 @@ def build_all(
     if val_errors:
         raise ValueError("\n".join(val_errors))
 
-    results: dict = {}
-    errors:  list[str] = []
+    # Biedstrategie uit sjablonen lezen (lokaal en stad kunnen verschillen)
+    bid_strategy_lok = extract_template_bid_strategy(df_lokaal)
+    bid_strategy_sta = extract_template_bid_strategy(df_stad)
+    bid_strategy = bid_strategy_lok or bid_strategy_sta
+
+    engine = CampaignBuildRulesEngine(
+        cpc_import            = cpc_import,
+        pause_import          = pause_import,
+        template_bid_strategy = bid_strategy,
+    )
+
+    results:  dict      = {}
+    errors:   list[str] = []
+    dry_rows: list[dict] = []   # voor dry-run overzicht
     total = len(sheet)
+
+    # Verzamel bekende plaatsen en klanten voor unmatched-warnings
+    known_cities  = {str(r.get("Plaats", "")).strip() for _, r in sheet.iterrows()}
+    known_klanten = {str(r.get("Klant", "")).strip() for _, r in sheet.iterrows()}
+
+    # Unmatched CPC/pauze warnings — eenmalig vóór de loop
+    for w in engine.unmatched_cpc_warnings(known_klanten):
+        errors.append(f"Waarschuwing: {w}")
+    for w in engine.unmatched_pause_warnings(known_cities):
+        errors.append(f"Waarschuwing: {w}")
 
     for i, (_, row) in enumerate(sheet.iterrows()):
         city  = str(row.get("Plaats", "")).strip()
@@ -553,10 +645,43 @@ def build_all(
                 progress_cb(city, i, total, skipped=True)
             continue
 
-        if progress_cb:
-            progress_cb(city, i, total, skipped=False,
-                        stad_excluded=city.lower() in EXCLUDED_STAD_CITIES)
+        # ── Rules engine: beslissingen per campagnetype ───────────────────────
+        stad_excluded = city.lower() in EXCLUDED_STAD_CITIES
 
+        stad_decision  = engine.get_city_decision(klant, city)
+        local_decision = engine.get_local_decision(klant, city)
+
+        # Blokkerende fouten (biedstrategie-incompatibiliteit)
+        for err in stad_decision.blocking_errors + local_decision.blocking_errors:
+            errors.append(f"Blokkerend: {err}")
+
+        # Dry-run: registreer beslissingen en ga door zonder te bouwen
+        if dry_run:
+            stad_skip_reason = (
+                "uitgesloten (algemeen woord)" if stad_excluded
+                else ("niet bouwen" if not stad_decision.should_build else "")
+            )
+            dry_rows.append({
+                "Klant":        klant,
+                "Plaats":       city,
+                "Stad":         "gepauzeerd" if (stad_decision.should_build and stad_decision.final_status == "Paused" and not stad_excluded)
+                                else ("overgeslagen" if (not stad_decision.should_build or stad_excluded) else "normaal"),
+                "Stad reden":   stad_skip_reason or (stad_decision.matched_rules[0].status_reason if stad_decision.matched_rules else ""),
+                "Lokaal":       "gepauzeerd" if (local_decision.should_build and local_decision.final_status == "Paused")
+                                else ("overgeslagen" if not local_decision.should_build else "normaal"),
+                "Lokaal reden": local_decision.matched_rules[0].status_reason if local_decision.matched_rules else "",
+                "CPC stad":     f"€{stad_decision.campaign_cpc_cents/100:.2f}" if stad_decision.campaign_cpc_cents else "—",
+                "CPC lokaal":   f"€{local_decision.campaign_cpc_cents/100:.2f}" if local_decision.campaign_cpc_cents else "—",
+                "Waarschuwingen": "; ".join(stad_decision.warnings + local_decision.warnings),
+            })
+            if progress_cb:
+                progress_cb(city, i, total, skipped=False, stad_excluded=stad_excluded)
+            continue
+
+        if progress_cb:
+            progress_cb(city, i, total, skipped=False, stad_excluded=stad_excluded)
+
+        # ── Campagnes bouwen ──────────────────────────────────────────────────
         try:
             lok_df, sta_df = process_city(
                 df_lokaal, df_stad, row, variants, merk_info, ad_schedule_override
@@ -567,10 +692,38 @@ def build_all(
 
         if klant not in results:
             results[klant] = {"lokaal": [], "stad": []}
-        if len(lok_df) > 0:
+
+        # Lokale campagne
+        if local_decision.should_build and len(lok_df) > 0:
+            if local_decision.final_status == "Paused":
+                lok_df = _force_campaign_status(lok_df, "Paused")
+            lok_df = _apply_cpc_to_df(
+                lok_df,
+                local_decision.campaign_cpc_cents,
+                local_decision.ad_group_cpc_cents,
+                local_decision.keyword_cpc_cents,
+            )
             results[klant]["lokaal"].append(lok_df)
-        if city.lower() not in EXCLUDED_STAD_CITIES:
+        elif not local_decision.should_build:
+            errors.append(f"Info: {city} (lokaal) niet gebouwd — {local_decision.audit_trail[-1].applied_value if local_decision.audit_trail else 'pauzeringsregel'}.")
+
+        # +Stad campagne
+        if not stad_excluded and stad_decision.should_build:
+            if stad_decision.final_status == "Paused":
+                sta_df = _force_campaign_status(sta_df, "Paused")
+            sta_df = _apply_cpc_to_df(
+                sta_df,
+                stad_decision.campaign_cpc_cents,
+                stad_decision.ad_group_cpc_cents,
+                stad_decision.keyword_cpc_cents,
+            )
             results[klant]["stad"].append(sta_df)
+        elif not stad_excluded and not stad_decision.should_build:
+            errors.append(f"Info: {city} (+Stad) niet gebouwd — {stad_decision.audit_trail[-1].applied_value if stad_decision.audit_trail else 'pauzeringsregel'}.")
+
+    # Dry-run: geef overzicht terug i.p.v. campagnedata
+    if dry_run:
+        return {"__dry_run__": dry_rows}, errors
 
     merged = {}
     for klant, parts in results.items():
