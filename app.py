@@ -27,6 +27,8 @@ _defaults = {
     "pause_import":  None,
     "cpc_confirmed": False,
     "pause_confirmed": False,
+    "build_kwargs":  None,   # non-file kwargs for converting dry-run → real build
+    "build_files":   None,   # raw bytes {"lokaal", "stad", "variants"} for re-run
 }
 for key, default in _defaults.items():
     if key not in st.session_state:
@@ -53,6 +55,42 @@ if st.session_state.results is not None:
             st.dataframe(pd.DataFrame(dry_rows), use_container_width=True, hide_index=True)
         if errors:
             st.warning("**Meldingen:**\n" + "\n".join(errors))
+
+        st.divider()
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🚀 Nu echt bouwen", type="primary"):
+                kwargs = st.session_state.build_kwargs
+                files  = st.session_state.build_files
+                if kwargs and files:
+                    with st.spinner("Bestanden genereren…"):
+                        with tempfile.TemporaryDirectory() as tmp2:
+                            lp = os.path.join(tmp2, "lokaal.csv")
+                            sp = os.path.join(tmp2, "stad.csv")
+                            with open(lp, "wb") as f: f.write(files["lokaal"])
+                            with open(sp, "wb") as f: f.write(files["stad"])
+                            vp = None
+                            if files.get("variants"):
+                                vp = os.path.join(tmp2, "variants.xlsx")
+                                with open(vp, "wb") as f: f.write(files["variants"])
+                            try:
+                                real_merged, real_errors = build_all(
+                                    lp, sp, **kwargs,
+                                    variants_path=vp,
+                                    dry_run=False,
+                                )
+                            except Exception as exc:
+                                st.error(f"Fout bij verwerken: {exc}")
+                                st.stop()
+                    st.session_state.results = real_merged
+                    st.session_state.errors  = real_errors
+                    st.session_state.build_kwargs = None
+                    st.session_state.build_files  = None
+                    st.rerun()
+                else:
+                    st.error("Bouwparameters niet meer beschikbaar — begin opnieuw.")
+        with col2:
+            st.caption("Akkoord met het bouwplan? Klik om de bestanden te genereren.")
         st.stop()
 
     # Normale uitvoer
@@ -411,18 +449,29 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 else:
                     log_lines.append(f"✅ {city}")
 
+            _shared_kwargs = dict(
+                sheet_url            = sheet_url,
+                sheet_name           = sheet_name,
+                klant_filter         = geselecteerde_klanten,
+                merk_info            = merk_info if eigen_merk else None,
+                ad_schedule_override = ad_schedule_override,
+                cpc_import           = st.session_state.cpc_import,
+                pause_import         = st.session_state.pause_import,
+                progress_cb          = progress_cb,
+            )
+            if dry_run:
+                st.session_state.build_kwargs = _shared_kwargs
+                st.session_state.build_files  = {
+                    "lokaal":   lokaal_file.getvalue(),
+                    "stad":     stad_file.getvalue(),
+                    "variants": variants_file.getvalue() if variants_file else None,
+                }
             try:
                 merged, errors = build_all(
-                    lok_path, sta_path, sheet_url,
-                    sheet_name           = sheet_name,
-                    variants_path        = var_path,
-                    klant_filter         = geselecteerde_klanten,
-                    merk_info            = merk_info if eigen_merk else None,
-                    ad_schedule_override = ad_schedule_override,
-                    cpc_import           = st.session_state.cpc_import,
-                    pause_import         = st.session_state.pause_import,
-                    dry_run              = dry_run,
-                    progress_cb          = progress_cb,
+                    lok_path, sta_path,
+                    **_shared_kwargs,
+                    variants_path = var_path,
+                    dry_run       = dry_run,
                 )
             except Exception as exc:
                 st.error(f"Fout bij verwerken: {exc}")
