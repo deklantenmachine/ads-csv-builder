@@ -666,10 +666,10 @@ def build_all(
                 "Plaats":       city,
                 "Stad":         "gepauzeerd" if (stad_decision.should_build and stad_decision.final_status == "Paused" and not stad_excluded)
                                 else ("overgeslagen" if (not stad_decision.should_build or stad_excluded) else "normaal"),
-                "Stad reden":   stad_skip_reason or (stad_decision.matched_rules[0].status_reason if stad_decision.matched_rules else ""),
+                "Stad reden":   stad_skip_reason or next((getattr(r, "status_reason", "") for r in stad_decision.matched_rules if getattr(r, "status_reason", "")), ""),
                 "Lokaal":       "gepauzeerd" if (local_decision.should_build and local_decision.final_status == "Paused")
                                 else ("overgeslagen" if not local_decision.should_build else "normaal"),
-                "Lokaal reden": local_decision.matched_rules[0].status_reason if local_decision.matched_rules else "",
+                "Lokaal reden": next((getattr(r, "status_reason", "") for r in local_decision.matched_rules if getattr(r, "status_reason", "")), ""),
                 "CPC stad":     f"€{stad_decision.campaign_cpc_cents/100:.2f}" if stad_decision.campaign_cpc_cents else "—",
                 "CPC lokaal":   f"€{local_decision.campaign_cpc_cents/100:.2f}" if local_decision.campaign_cpc_cents else "—",
                 "Waarschuwingen": "; ".join(stad_decision.warnings + local_decision.warnings),
