@@ -96,15 +96,23 @@ def parse_cpc_cents(raw) -> tuple[int | None, str | None]:
         return None, f"Ongeldig CPC-bedrag: {raw!r}"
 
 
+# Campagnetypen die aanwezig kunnen zijn in het bestand maar die we niet bouwen.
+# Rijen met dit type worden overgeslagen met een waarschuwing, niet geblokkeerd.
+_UNSUPPORTED_CAMPAIGN_TYPES = {"overkoepelend/uitbreiding", "overkoepelend", "uitbreiding"}
+
+
 def parse_campaign_type(raw: str) -> tuple[CampaignType | None, str | None]:
     key = normalize_name(raw)
     if key in _CAMPAIGN_TYPE_MAP:
         return _CAMPAIGN_TYPE_MAP[key], None
-    # strip spaces and slashes for loose matching
-    key_compact = key.replace(" ", "").replace("/", "/")
+    # strip spaces for loose matching
+    key_compact = key.replace(" ", "")
     for k, v in _CAMPAIGN_TYPE_MAP.items():
         if k.replace(" ", "") == key_compact:
             return v, None
+    # Bekend niet-ondersteund type → apart signaal zodat de aanroeper kan skippen
+    if key in _UNSUPPORTED_CAMPAIGN_TYPES:
+        return None, f"__SKIP__:{raw}"
     return None, f"Onbekend campagnetype: {raw!r} (ondersteund: REGULIER/STAD, LOKAAL)"
 
 
@@ -362,6 +370,31 @@ def _get_col(row: pd.Series, *names: str):
     return None
 
 
+def _find_cpc_col(columns: list[str], *extra_names: str) -> str | None:
+    """
+    Find the CPC value column by checking explicit names first,
+    then falling back to any column whose name contains 'advies cpc'.
+    """
+    candidates = list(extra_names) + ["CPC", "Uitzondering CPC", "Standaard CPC instellen"]
+    for name in candidates:
+        if name in columns:
+            return name
+    # fuzzy fallback: kolom waarvan de naam 'advies cpc' bevat
+    for col in columns:
+        if "advies cpc" in col.lower():
+            return col
+    return None
+
+
+def _is_placeholder_empty_sheet(df: pd.DataFrame) -> bool:
+    """
+    Detect sheets that use a single 'Geen ... gevonden' column as empty placeholder.
+    """
+    if df.empty or len(df.columns) > 2:
+        return False
+    return any("geen" in str(c).lower() for c in df.columns)
+
+
 def parse_cpc_advice(file_bytes: bytes, file_name: str = "onbekend") -> CpcAdviceImport:
     file_type, wb_data, metadata = detect_advice_file_type(file_bytes, file_name)
 
@@ -414,7 +447,13 @@ def parse_cpc_advice(file_bytes: bytes, file_name: str = "onbekend") -> CpcAdvic
 
         ctype, ctype_err = parse_campaign_type(ctype_raw)
         if ctype_err:
-            errors.append(f"Bouwplan CPC rij {src_row} ({account_raw}): {ctype_err}")
+            if ctype_err.startswith("__SKIP__:"):
+                warnings.append(
+                    f"Bouwplan CPC rij {src_row} ({account_raw}): campagnetype "
+                    f"'{ctype_raw}' wordt niet ondersteund en overgeslagen."
+                )
+            else:
+                errors.append(f"Bouwplan CPC rij {src_row} ({account_raw}): {ctype_err}")
             continue
 
         cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
@@ -474,51 +513,59 @@ def parse_cpc_advice(file_bytes: bytes, file_name: str = "onbekend") -> CpcAdvic
         df_camp = df_camp.copy()
         df_camp.columns = [str(c).strip() for c in df_camp.columns]
         df_camp = df_camp.dropna(how="all")
-        seen_camp: dict[tuple, int] = {}
 
-        for row_idx, row in df_camp.iterrows():
-            src_row     = int(row_idx) + 2
-            account_raw = str(row.get("Account", "")).strip()
-            cid_raw     = str(row.get("Klant-ID", "")).strip()
-            ctype_raw   = str(row.get("Campagnetype", "")).strip()
-            camp_raw    = str(row.get("Campagne / plaats", row.get("Campagne", ""))).strip()
-            cpc_raw     = _get_col(row, "CPC", "Uitzondering CPC", "Standaard CPC instellen")
+        if not _is_placeholder_empty_sheet(df_camp):
+            cpc_col_camp = _find_cpc_col(
+                list(df_camp.columns),
+                "Advies CPC alleen voor deze campagne/stad",
+            )
+            seen_camp: dict[tuple, int] = {}
 
-            if not account_raw or account_raw == "nan":
-                continue
-            norm_account = normalize_name(account_raw)
-            ctype, ctype_err = parse_campaign_type(ctype_raw)
-            if ctype_err:
-                errors.append(f"Campagne-uitzonderingen rij {src_row}: {ctype_err}")
-                continue
-            cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
-            if cpc_err:
-                errors.append(f"Campagne-uitzonderingen rij {src_row} ({account_raw}): {cpc_err}")
-                continue
+            for row_idx, row in df_camp.iterrows():
+                src_row     = int(row_idx) + 2
+                account_raw = str(row.get("Account", "")).strip()
+                cid_raw     = str(row.get("Klant-ID", "")).strip()
+                ctype_raw   = str(row.get("Campagnetype", "")).strip()
+                camp_raw    = str(row.get("Campagne / plaats", row.get("Campagne", ""))).strip()
+                cpc_raw     = _get_col(row, cpc_col_camp) if cpc_col_camp else None
 
-            norm_camp = normalize_name(camp_raw)
-            dup_key   = (norm_account, ctype, norm_camp)
-            if dup_key in seen_camp and seen_camp[dup_key] != cpc_cents:
-                errors.append(
-                    f"Campagne-uitzonderingen rij {src_row}: Conflicterende CPC voor "
-                    f"'{account_raw}' / '{camp_raw}' (twee verschillende bedragen)."
-                )
-                continue
-            seen_camp[dup_key] = cpc_cents
+                if not account_raw or account_raw == "nan":
+                    continue
+                norm_account = normalize_name(account_raw)
+                ctype, ctype_err = parse_campaign_type(ctype_raw)
+                if ctype_err:
+                    if ctype_err.startswith("__SKIP__:"):
+                        continue
+                    errors.append(f"Campagne-uitzonderingen rij {src_row}: {ctype_err}")
+                    continue
+                cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
+                if cpc_err:
+                    errors.append(f"Campagne-uitzonderingen rij {src_row} ({account_raw}): {cpc_err}")
+                    continue
 
-            campaign_exceptions.append(CampaignCpcException(
-                account_name             = account_raw,
-                normalized_account       = norm_account,
-                customer_id_raw          = cid_raw,
-                campaign_type            = ctype,
-                campaign_name            = camp_raw,
-                normalized_campaign_name = norm_camp,
-                place_name               = camp_raw,
-                normalized_place_name    = norm_camp,
-                cpc_in_cents             = cpc_cents,
-                source_sheet             = "Campagne-uitzonderingen",
-                source_row               = src_row,
-            ))
+                norm_camp = normalize_name(camp_raw)
+                dup_key   = (norm_account, ctype, norm_camp)
+                if dup_key in seen_camp and seen_camp[dup_key] != cpc_cents:
+                    errors.append(
+                        f"Campagne-uitzonderingen rij {src_row}: Conflicterende CPC voor "
+                        f"'{account_raw}' / '{camp_raw}' (twee verschillende bedragen)."
+                    )
+                    continue
+                seen_camp[dup_key] = cpc_cents
+
+                campaign_exceptions.append(CampaignCpcException(
+                    account_name             = account_raw,
+                    normalized_account       = norm_account,
+                    customer_id_raw          = cid_raw,
+                    campaign_type            = ctype,
+                    campaign_name            = camp_raw,
+                    normalized_campaign_name = norm_camp,
+                    place_name               = camp_raw,
+                    normalized_place_name    = norm_camp,
+                    cpc_in_cents             = cpc_cents,
+                    source_sheet             = "Campagne-uitzonderingen",
+                    source_row               = src_row,
+                ))
 
     # ── Adv.groep-uitzonderingen (optioneel) ──────────────────────────────────
     df_ag = wb_data.get("Adv.groep-uitzonderingen")
@@ -527,39 +574,46 @@ def parse_cpc_advice(file_bytes: bytes, file_name: str = "onbekend") -> CpcAdvic
         df_ag.columns = [str(c).strip() for c in df_ag.columns]
         df_ag = df_ag.dropna(how="all")
 
-        for row_idx, row in df_ag.iterrows():
-            src_row     = int(row_idx) + 2
-            account_raw = str(row.get("Account", "")).strip()
-            cid_raw     = str(row.get("Klant-ID", "")).strip()
-            ctype_raw   = str(row.get("Campagnetype", "")).strip()
-            camp_raw    = str(row.get("Campagne", "")).strip()
-            ag_raw      = str(row.get("Advertentiegroep", "")).strip()
-            cpc_raw     = _get_col(row, "CPC", "Uitzondering CPC")
+        if not _is_placeholder_empty_sheet(df_ag):
+            cpc_col_ag = _find_cpc_col(
+                list(df_ag.columns),
+                "Advies CPC alleen voor deze advertentiegroep",
+            )
+            for row_idx, row in df_ag.iterrows():
+                src_row     = int(row_idx) + 2
+                account_raw = str(row.get("Account", "")).strip()
+                cid_raw     = str(row.get("Klant-ID", "")).strip()
+                ctype_raw   = str(row.get("Campagnetype", "")).strip()
+                camp_raw    = str(row.get("Campagne", "")).strip()
+                ag_raw      = str(row.get("Advertentiegroep", "")).strip()
+                cpc_raw     = _get_col(row, cpc_col_ag) if cpc_col_ag else None
 
-            if not account_raw or account_raw == "nan":
-                continue
-            norm_account = normalize_name(account_raw)
-            ctype, ctype_err = parse_campaign_type(ctype_raw)
-            if ctype_err:
-                errors.append(f"Adv.groep-uitzonderingen rij {src_row}: {ctype_err}")
-                continue
-            cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
-            if cpc_err:
-                errors.append(f"Adv.groep-uitzonderingen rij {src_row} ({account_raw}): {cpc_err}")
-                continue
+                if not account_raw or account_raw == "nan":
+                    continue
+                norm_account = normalize_name(account_raw)
+                ctype, ctype_err = parse_campaign_type(ctype_raw)
+                if ctype_err:
+                    if ctype_err.startswith("__SKIP__:"):
+                        continue
+                    errors.append(f"Adv.groep-uitzonderingen rij {src_row}: {ctype_err}")
+                    continue
+                cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
+                if cpc_err:
+                    errors.append(f"Adv.groep-uitzonderingen rij {src_row} ({account_raw}): {cpc_err}")
+                    continue
 
-            ad_group_exceptions.append(AdGroupCpcException(
-                account_name             = account_raw,
-                normalized_account       = norm_account,
-                customer_id_raw          = cid_raw,
-                campaign_type            = ctype,
-                campaign_name            = camp_raw,
-                ad_group_name            = ag_raw,
-                normalized_ad_group_name = normalize_name(ag_raw),
-                cpc_in_cents             = cpc_cents,
-                source_sheet             = "Adv.groep-uitzonderingen",
-                source_row               = src_row,
-            ))
+                ad_group_exceptions.append(AdGroupCpcException(
+                    account_name             = account_raw,
+                    normalized_account       = norm_account,
+                    customer_id_raw          = cid_raw,
+                    campaign_type            = ctype,
+                    campaign_name            = camp_raw,
+                    ad_group_name            = ag_raw,
+                    normalized_ad_group_name = normalize_name(ag_raw),
+                    cpc_in_cents             = cpc_cents,
+                    source_sheet             = "Adv.groep-uitzonderingen",
+                    source_row               = src_row,
+                ))
 
     # ── Zoekwoord-uitzonderingen (optioneel) ──────────────────────────────────
     df_kw = wb_data.get("Zoekwoord-uitzonderingen")
@@ -568,44 +622,51 @@ def parse_cpc_advice(file_bytes: bytes, file_name: str = "onbekend") -> CpcAdvic
         df_kw.columns = [str(c).strip() for c in df_kw.columns]
         df_kw = df_kw.dropna(how="all")
 
-        for row_idx, row in df_kw.iterrows():
-            src_row     = int(row_idx) + 2
-            account_raw = str(row.get("Account", "")).strip()
-            cid_raw     = str(row.get("Klant-ID", "")).strip()
-            ctype_raw   = str(row.get("Campagnetype", "")).strip()
-            camp_raw    = str(row.get("Campagne", "")).strip()
-            ag_raw      = str(row.get("Advertentiegroep", "")).strip()
-            kw_raw      = str(row.get("Zoekwoord", "")).strip()
-            mt_raw      = str(row.get("Matchtype", "")).strip()
-            cpc_raw     = _get_col(row, "CPC", "Uitzondering CPC")
+        if not _is_placeholder_empty_sheet(df_kw):
+            cpc_col_kw = _find_cpc_col(
+                list(df_kw.columns),
+                "Advies CPC alleen voor dit zoekwoord",
+            )
+            for row_idx, row in df_kw.iterrows():
+                src_row     = int(row_idx) + 2
+                account_raw = str(row.get("Account", "")).strip()
+                cid_raw     = str(row.get("Klant-ID", "")).strip()
+                ctype_raw   = str(row.get("Campagnetype", "")).strip()
+                camp_raw    = str(row.get("Campagne", "")).strip()
+                ag_raw      = str(row.get("Advertentiegroep", "")).strip()
+                kw_raw      = str(row.get("Zoekwoord", "")).strip()
+                mt_raw      = str(row.get("Matchtype", "")).strip()
+                cpc_raw     = _get_col(row, cpc_col_kw) if cpc_col_kw else None
 
-            if not account_raw or account_raw == "nan":
-                continue
-            norm_account = normalize_name(account_raw)
-            ctype, ctype_err = parse_campaign_type(ctype_raw)
-            if ctype_err:
-                errors.append(f"Zoekwoord-uitzonderingen rij {src_row}: {ctype_err}")
-                continue
-            cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
-            if cpc_err:
-                errors.append(f"Zoekwoord-uitzonderingen rij {src_row} ({account_raw}): {cpc_err}")
-                continue
+                if not account_raw or account_raw == "nan":
+                    continue
+                norm_account = normalize_name(account_raw)
+                ctype, ctype_err = parse_campaign_type(ctype_raw)
+                if ctype_err:
+                    if ctype_err.startswith("__SKIP__:"):
+                        continue
+                    errors.append(f"Zoekwoord-uitzonderingen rij {src_row}: {ctype_err}")
+                    continue
+                cpc_cents, cpc_err = parse_cpc_cents(cpc_raw)
+                if cpc_err:
+                    errors.append(f"Zoekwoord-uitzonderingen rij {src_row} ({account_raw}): {cpc_err}")
+                    continue
 
-            keyword_exceptions.append(KeywordCpcException(
-                account_name             = account_raw,
-                normalized_account       = norm_account,
-                customer_id_raw          = cid_raw,
-                campaign_type            = ctype,
-                campaign_name            = camp_raw,
-                ad_group_name            = ag_raw,
-                normalized_ad_group_name = normalize_name(ag_raw),
-                keyword_text             = kw_raw,
-                normalized_keyword_text  = normalize_name(kw_raw),
-                match_type               = normalize_match_type(mt_raw),
-                cpc_in_cents             = cpc_cents,
-                source_sheet             = "Zoekwoord-uitzonderingen",
-                source_row               = src_row,
-            ))
+                keyword_exceptions.append(KeywordCpcException(
+                    account_name             = account_raw,
+                    normalized_account       = norm_account,
+                    customer_id_raw          = cid_raw,
+                    campaign_type            = ctype,
+                    campaign_name            = camp_raw,
+                    ad_group_name            = ag_raw,
+                    normalized_ad_group_name = normalize_name(ag_raw),
+                    keyword_text             = kw_raw,
+                    normalized_keyword_text  = normalize_name(kw_raw),
+                    match_type               = normalize_match_type(mt_raw),
+                    cpc_in_cents             = cpc_cents,
+                    source_sheet             = "Zoekwoord-uitzonderingen",
+                    source_row               = src_row,
+                ))
 
     return CpcAdviceImport(
         metadata             = metadata,

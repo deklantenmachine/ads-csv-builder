@@ -121,12 +121,18 @@ def test_06_only_regulier_stad_and_lokaal_accepted():
 
 
 def test_07_unknown_campaign_type_gives_error():
-    """7. Onbekend campagnetype geeft fout."""
-    data = _xlsx({"Bouwplan CPC": [
-        _cpc_row(ctype="OVERKOEPELEND")
-    ]})
+    """7. Onbekend campagnetype geeft fout; OVERKOEPELEND/UITBREIDING geeft waarschuwing+skip."""
+    # Echt onbekend → blokkerende fout
+    data = _xlsx({"Bouwplan CPC": [_cpc_row(ctype="VOLLEDIG_ONBEKEND")]})
     result = parse_cpc_advice(data, "test.xlsx")
     assert any("Onbekend campagnetype" in e for e in result.validation_errors)
+
+    # OVERKOEPELEND/UITBREIDING → waarschuwing, geen fout, rij overgeslagen
+    data2 = _xlsx({"Bouwplan CPC": [_cpc_row(ctype="OVERKOEPELEND/UITBREIDING")]})
+    result2 = parse_cpc_advice(data2, "test.xlsx")
+    assert result2.is_valid
+    assert any("overgeslagen" in w for w in result2.validation_warnings)
+    assert result2.default_rules == []  # rij niet verwerkt
 
 
 # ══════════════════════════════════════════════════════════════════════════════
