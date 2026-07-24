@@ -167,20 +167,26 @@ class CampaignBuildRulesEngine:
         return None
 
     def unmatched_cpc_warnings(self, known_accounts: set[str]) -> list[str]:
-        """Return warnings for CPC rules whose account has no match in the build."""
+        """Warn for accounts in the active build that have no CPC advice.
+
+        Does NOT warn about CPC file accounts that are simply not part of this build.
+        """
         if not self._cpc:
             return []
         warnings = []
         norm_known = {normalize_name(a) for a in known_accounts}
-        for rule in self._cpc.default_rules:
-            na = rule.normalized_account
-            if na not in norm_known:
-                _, score = fuzzy_best_account_match(na, norm_known)
-                if score < _FUZZY_THRESHOLD:
-                    warnings.append(
-                        f"CPC-advies: account '{rule.account_name}' uit het adviesbestand "
-                        f"is niet gevonden in de plaatsenlijst."
-                    )
+        cpc_norm_accounts = {r.normalized_account for r in self._cpc.default_rules}
+        for norm_build_account in norm_known:
+            # Check if this build account has a CPC rule (exact or fuzzy)
+            if norm_build_account in cpc_norm_accounts:
+                continue
+            best, score = fuzzy_best_account_match(norm_build_account, cpc_norm_accounts)
+            if score < _FUZZY_THRESHOLD:
+                # find original display name
+                original = next((a for a in known_accounts if normalize_name(a) == norm_build_account), norm_build_account)
+                warnings.append(
+                    f"CPC-advies: geen CPC-regel gevonden voor account '{original}'."
+                )
         return warnings
 
     def unmatched_pause_warnings(
