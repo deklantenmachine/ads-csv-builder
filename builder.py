@@ -497,6 +497,26 @@ def process_city(
             else:
                 df[col] = _replace_in_col(df[col], TEMPLATE_CITY, city)
 
+        # Tekenlimiet-vangnet: vervang lange naam door korte als kolom te lang is.
+        # Vangt gevallen op waarbij de naam al ingebakken is in de Excel-variant.
+        if merk_info:
+            _korte = merk_info.get("korte_naam", "")
+            _lange = merk_info.get("lange_naam", "") or _korte
+            if _lange and _lange != _korte:
+                for col in AD_TEXT_COLS:
+                    limit = _COL_CHAR_LIMITS.get(col)
+                    if not limit or col not in df.columns:
+                        continue
+                    def _trim(v, _k=_korte, _l=_lange, _lim=limit):
+                        if not pd.notna(v) or not str(v).strip():
+                            return v
+                        s = str(v)
+                        if len(s) <= _lim or _l not in s:
+                            return s
+                        shorter = s.replace(_l, _k)
+                        return shorter if len(shorter) <= _lim else s
+                    df[col] = df[col].apply(_trim)
+
         # vervang USP-placeholder (case-insensitief, ook in lange varianten)
         if merk_info:
             usp = merk_info.get("usp", "").strip()
