@@ -183,13 +183,24 @@ class CampaignBuildRulesEngine:
                     )
         return warnings
 
-    def unmatched_pause_warnings(self, known_cities: set[str]) -> list[str]:
-        """Return warnings for pause rules whose city has no match in the build."""
+    def unmatched_pause_warnings(
+        self, known_cities: set[str], known_accounts: set[str] | None = None
+    ) -> list[str]:
+        """Return warnings for pause rules whose city has no match in the build.
+
+        When known_accounts is provided, only rules for accounts in the active build
+        are checked — rules for other accounts are silently ignored.
+        """
         if not self._pause:
             return []
         warnings = []
-        norm_cities = {normalize_name(c) for c in known_cities}
+        norm_cities   = {normalize_name(c) for c in known_cities}
+        norm_accounts = {normalize_name(a) for a in known_accounts} if known_accounts else None
         for rule in self._pause.city_place_rules:
+            if norm_accounts is not None:
+                resolved, _ = fuzzy_best_account_match(rule.normalized_account, norm_accounts)
+                if not resolved:
+                    continue  # account niet in actieve build — sla over
             if rule.normalized_place_name not in norm_cities:
                 warnings.append(
                     f"Pauzeringsregel voor '{rule.place_name}' (account: {rule.account_name}) "

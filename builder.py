@@ -664,14 +664,19 @@ def build_all(
     dry_rows: list[dict] = []   # voor dry-run overzicht
     total = len(sheet)
 
-    # Verzamel bekende plaatsen en klanten voor unmatched-warnings
-    known_cities  = {str(r.get("Plaats", "")).strip() for _, r in sheet.iterrows()}
-    known_klanten = {str(r.get("Klant", "")).strip() for _, r in sheet.iterrows()}
+    # Verzamel bekende plaatsen en klanten NA filtering — warnings alleen voor actieve build
+    def _klant_val(r):
+        v = str(r.get("Klant", "")).strip()
+        return v if v and v != "nan" else "DakPro"
+
+    active_rows   = sheet[sheet.apply(lambda r: not klant_filter or _klant_val(r) in klant_filter, axis=1)]
+    known_cities  = {str(r.get("Plaats", "")).strip() for _, r in active_rows.iterrows()}
+    known_klanten = {_klant_val(r) for _, r in active_rows.iterrows()}
 
     # Unmatched CPC/pauze warnings — eenmalig vóór de loop
     for w in engine.unmatched_cpc_warnings(known_klanten):
         errors.append(f"Waarschuwing: {w}")
-    for w in engine.unmatched_pause_warnings(known_cities):
+    for w in engine.unmatched_pause_warnings(known_cities, known_accounts=known_klanten):
         errors.append(f"Waarschuwing: {w}")
 
     for i, (_, row) in enumerate(sheet.iterrows()):
