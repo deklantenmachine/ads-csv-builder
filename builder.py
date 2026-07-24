@@ -200,9 +200,26 @@ def load_variants(xlsx_path: str) -> dict:
     return variants
 
 
-def _resolve_name(lange_raw: str, korte_naam: str, lange_naam: str, name_max_len: int | None) -> str:
-    """Vervang naam-placeholders in de lange-variant tekst (enkele quotes én vierkante haken)."""
-    effective_lange = korte_naam if (name_max_len and len(lange_naam) > name_max_len) else lange_naam
+def _resolve_name(
+    lange_raw: str,
+    korte_naam: str,
+    lange_naam: str,
+    name_max_len: int | None,
+    col_char_limit: int | None = None,
+) -> str:
+    """Vervang naam-placeholders in de lange-variant tekst (enkele quotes én vierkante haken).
+
+    Kiest korte naam als:
+    1. name_max_len is gezet en len(lange_naam) > name_max_len, OF
+    2. col_char_limit is gezet en het resultaat met lange naam de limiet overschrijdt.
+    """
+    if name_max_len and len(lange_naam) > name_max_len:
+        effective_lange = korte_naam
+    elif col_char_limit:
+        candidate = lange_raw.replace("'Lange bedrijfsnaam'", lange_naam).replace("[Lange bedrijfsnaam]", lange_naam)
+        effective_lange = korte_naam if len(candidate) > col_char_limit else lange_naam
+    else:
+        effective_lange = lange_naam
     result = lange_raw
     result = result.replace("'Lange bedrijfsnaam'", effective_lange)
     result = result.replace("[Lange bedrijfsnaam]", effective_lange)
@@ -211,7 +228,7 @@ def _resolve_name(lange_raw: str, korte_naam: str, lange_naam: str, name_max_len
     return result
 
 
-def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None = None) -> str:
+def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None = None, col: str = "") -> str:
     """
     Bepaal de juiste tekstvariant voor één cel.
 
@@ -237,12 +254,14 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                 return usp
             return lange_raw if lange_raw else s  # fallback uit Excel
 
+        col_limit = _COL_CHAR_LIMITS.get(col)
+
         if r == "always" and merk_info:
             if not lange_raw:
                 return s
             korte = merk_info.get("korte_naam", "")
             lange = merk_info.get("lange_naam", "")
-            result = _resolve_name(lange_raw, korte, lange, rule.get("name_max_len"))
+            result = _resolve_name(lange_raw, korte, lange, rule.get("name_max_len"), col_limit)
             result = _apply_portaal_values(result, merk_info)
             return _case_replace(result, TEMPLATE_CITY, city)
 
@@ -255,7 +274,7 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                 if merk_info:
                     korte = merk_info.get("korte_naam", "")
                     lange = merk_info.get("lange_naam", "")
-                    result = _resolve_name(lange_raw, korte, lange, name_max_len)
+                    result = _resolve_name(lange_raw, korte, lange, name_max_len, col_limit)
                     result = _apply_portaal_values(result, merk_info)
                 else:
                     result = lange_raw
@@ -271,11 +290,35 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
     return result
 
 
-def _apply_eigen_placeholders(text: str, merk_info: dict, city: str) -> str:
-    """Vervang [Bedrijfsnaam], [ReviewScore], [JarenGarantie] in één string."""
+# Google Ads tekenlimiet per kolomtype
+_COL_CHAR_LIMITS: dict[str, int] = {
+    **{f"Headline {i}": 30 for i in range(1, 16)},
+    **{f"Description {i}": 90 for i in range(1, 5)},
+    "Description Line 1": 90,
+    "Description Line 2": 90,
+    "Path 1": 15,
+    "Path 2": 15,
+    "Callout text": 25,
+    "Link Text": 25,
+}
+
+
+def _apply_eigen_placeholders(text: str, merk_info: dict, city: str, col: str = "") -> str:
+    """Vervang [Bedrijfsnaam], [ReviewScore], [JarenGarantie] in één string.
+
+    Kiest automatisch de korte bedrijfsnaam als de lange naam de tekenlimiet
+    voor de betreffende kolom zou overschrijden.
+    """
     korte = merk_info.get("korte_naam", "")
-    lange = merk_info.get("lange_naam", "")
-    bedrijfsnaam = korte if (lange and len(lange) > 20) else (lange or korte)
+    lange = merk_info.get("lange_naam", "") or korte
+
+    # Probeer lange naam; val terug op korte als het resultaat te lang is
+    limit = _COL_CHAR_LIMITS.get(col)
+    if limit and "[Bedrijfsnaam]" in text:
+        met_lange = text.replace("[Bedrijfsnaam]", lange)
+        bedrijfsnaam = korte if len(met_lange) > limit else lange
+    else:
+        bedrijfsnaam = lange
 
     text = text.replace("[Bedrijfsnaam]", bedrijfsnaam)
     text = text.replace("[ReviewScore]",  merk_info.get("review_score",    ""))
@@ -442,13 +485,13 @@ def process_city(
                 continue
             if variants:
                 df[col] = df[col].apply(
-                    lambda v: _apply_variant(v, city, variants, merk_info)
+                    lambda v, _col=col: _apply_variant(v, city, variants, merk_info, col=_col)
                     if (pd.notna(v) and str(v).strip()) else v
                 )
             elif merk_info:
                 df[col] = df[col].apply(
-                    lambda v: _apply_eigen_placeholders(
-                        _case_replace(str(v), TEMPLATE_CITY, city), merk_info, city
+                    lambda v, _col=col: _apply_eigen_placeholders(
+                        _case_replace(str(v), TEMPLATE_CITY, city), merk_info, city, col=_col
                     ) if (pd.notna(v) and str(v).strip()) else v
                 )
             else:
