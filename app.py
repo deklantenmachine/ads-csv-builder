@@ -63,25 +63,32 @@ if st.session_state.results is not None:
                 kwargs = st.session_state.build_kwargs
                 files  = st.session_state.build_files
                 if kwargs and files:
-                    with st.spinner("Bestanden genereren…"):
-                        with tempfile.TemporaryDirectory() as tmp2:
-                            lp = os.path.join(tmp2, "lokaal.csv")
-                            sp = os.path.join(tmp2, "stad.csv")
-                            with open(lp, "wb") as f: f.write(files["lokaal"])
-                            with open(sp, "wb") as f: f.write(files["stad"])
-                            vp = None
-                            if files.get("variants"):
-                                vp = os.path.join(tmp2, "variants.xlsx")
-                                with open(vp, "wb") as f: f.write(files["variants"])
-                            try:
-                                real_merged, real_errors = build_all(
-                                    lp, sp, **kwargs,
-                                    variants_path=vp,
-                                    dry_run=False,
-                                )
-                            except Exception as exc:
-                                st.error(f"Fout bij verwerken: {exc}")
-                                st.stop()
+                    _pb  = st.progress(0)
+                    _txt = st.empty()
+                    def _real_progress_cb(city, i, total, skipped=False, stad_excluded=False):
+                        _pb.progress(int((i / total) * 100))
+                        _txt.text(f"Verwerken: {city} ({i+1}/{total})")
+                    with tempfile.TemporaryDirectory() as tmp2:
+                        lp = os.path.join(tmp2, "lokaal.csv")
+                        sp = os.path.join(tmp2, "stad.csv")
+                        with open(lp, "wb") as f: f.write(files["lokaal"])
+                        with open(sp, "wb") as f: f.write(files["stad"])
+                        vp = None
+                        if files.get("variants"):
+                            vp = os.path.join(tmp2, "variants.xlsx")
+                            with open(vp, "wb") as f: f.write(files["variants"])
+                        try:
+                            real_merged, real_errors = build_all(
+                                lp, sp, **kwargs,
+                                variants_path=vp,
+                                dry_run=False,
+                                progress_cb=_real_progress_cb,
+                            )
+                        except Exception as exc:
+                            st.error(f"Fout bij verwerken: {exc}")
+                            st.stop()
+                    _pb.progress(100)
+                    _txt.text("Klaar!")
                     st.session_state.results = real_merged
                     st.session_state.errors  = real_errors
                     st.session_state.build_kwargs = None
@@ -457,7 +464,6 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 ad_schedule_override = ad_schedule_override,
                 cpc_import           = st.session_state.cpc_import,
                 pause_import         = st.session_state.pause_import,
-                progress_cb          = progress_cb,
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs
@@ -472,6 +478,7 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                     **_shared_kwargs,
                     variants_path = var_path,
                     dry_run       = dry_run,
+                    progress_cb   = progress_cb,
                 )
             except Exception as exc:
                 st.error(f"Fout bij verwerken: {exc}")
