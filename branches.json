@@ -1,10 +1,22 @@
 {
   "Dakdekker": {
-    "sheet_url": "",
-    "sheet_name": "Testtab",
-    "lokaal_template_path": "",
-    "stad_template_path": "",
-    "cpc_file_path": "",
-    "pause_file_path": ""
+    "Eigen merk": {
+      "sheet_url": "https://docs.google.com/spreadsheets/d/11FbSGdbA96v60j2JIih5w46X_3fX4tDboBPQ2VMtduE/edit?usp=sharing",
+      "sheet_name": "Testtab",
+      "lokaal_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\lokaal.csv",
+      "stad_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\stad.csv",
+      "variants_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\variants.xlsx",
+      "cpc_file_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\cpc.xlsx",
+      "pause_file_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\pause.xlsx"
+    },
+    "Overkoepelend merk (portaal)": {
+      "sheet_url": "",
+      "sheet_name": "Testtab",
+      "lokaal_template_path": "",
+      "stad_template_path": "",
+      "variants_path": "",
+      "cpc_file_path": "",
+      "pause_file_path": ""
+    }
   }
 }

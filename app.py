@@ -52,37 +52,44 @@ st.title("📦 Google Ads CSV Builder")
 
 # ── Branch selector ────────────────────────────────────────────────────────────
 _branches = _load_branches()
-_branch_names = list(_branches.keys())
+_branch_names   = list(_branches.keys())
+_MERK_TYPES     = ["Eigen merk", "Overkoepelend merk (portaal)"]
 
-st.header("0. Branche")
-_col_branch, _col_edit = st.columns([3, 1])
+st.header("0. Branche & merktype")
+_col_branch, _col_merk, _col_edit = st.columns([2, 2, 1])
 with _col_branch:
-    selected_branch = st.selectbox("Kies branche", _branch_names, key="selected_branch")
+    selected_branch = st.selectbox("Branche", _branch_names, key="selected_branch")
+with _col_merk:
+    selected_merk = st.selectbox("Merktype", _MERK_TYPES, key="selected_merk")
 with _col_edit:
-    st.write("")  # vertical align
+    st.write("")
     show_branch_config = st.toggle("Bewerk standaarden", key="show_branch_config")
 
-_branch_cfg = _branches.get(selected_branch, {})
+_branch_cfg = _branches.get(selected_branch, {}).get(selected_merk, {})
 
 if show_branch_config:
-    with st.expander("Standaardwaarden voor deze branche", expanded=True):
-        bc_sheet_url    = st.text_input("Standaard sheet URL",       value=_branch_cfg.get("sheet_url", ""),               key="bc_sheet_url")
-        bc_sheet_name   = st.text_input("Standaard tabblad",         value=_branch_cfg.get("sheet_name", "Testtab"),        key="bc_sheet_name")
-        bc_lokaal       = st.text_input("Pad lokaal sjabloon (.csv)",  value=_branch_cfg.get("lokaal_template_path", ""),  key="bc_lokaal")
-        bc_stad         = st.text_input("Pad +stad sjabloon (.csv)",   value=_branch_cfg.get("stad_template_path", ""),    key="bc_stad")
-        bc_cpc          = st.text_input("Pad CPC-bestand (.xlsx)",     value=_branch_cfg.get("cpc_file_path", ""),         key="bc_cpc")
-        bc_pause        = st.text_input("Pad pauzeringsbestand (.xlsx)", value=_branch_cfg.get("pause_file_path", ""),     key="bc_pause")
+    with st.expander(f"Standaardwaarden voor {selected_branch} — {selected_merk}", expanded=True):
+        bc_sheet_url = st.text_input("Standaard sheet URL",            value=_branch_cfg.get("sheet_url", ""),            key="bc_sheet_url")
+        bc_sheet_name = st.text_input("Standaard tabblad",             value=_branch_cfg.get("sheet_name", "Testtab"),    key="bc_sheet_name")
+        bc_lokaal    = st.text_input("Pad lokaal sjabloon (.csv)",     value=_branch_cfg.get("lokaal_template_path", ""), key="bc_lokaal")
+        bc_stad      = st.text_input("Pad +stad sjabloon (.csv)",      value=_branch_cfg.get("stad_template_path", ""),   key="bc_stad")
+        bc_variants  = st.text_input("Pad variantenbestand (.xlsx)",   value=_branch_cfg.get("variants_path", ""),        key="bc_variants")
+        bc_cpc       = st.text_input("Pad CPC-bestand (.xlsx)",        value=_branch_cfg.get("cpc_file_path", ""),        key="bc_cpc")
+        bc_pause     = st.text_input("Pad pauzeringsbestand (.xlsx)",  value=_branch_cfg.get("pause_file_path", ""),      key="bc_pause")
         if st.button("Opslaan", key="save_branch_cfg"):
-            _branches[selected_branch] = {
+            if selected_branch not in _branches:
+                _branches[selected_branch] = {}
+            _branches[selected_branch][selected_merk] = {
                 "sheet_url":            bc_sheet_url.strip(),
                 "sheet_name":           bc_sheet_name.strip(),
                 "lokaal_template_path": bc_lokaal.strip(),
                 "stad_template_path":   bc_stad.strip(),
+                "variants_path":        bc_variants.strip(),
                 "cpc_file_path":        bc_cpc.strip(),
                 "pause_file_path":      bc_pause.strip(),
             }
             _save_branches(_branches)
-            _branch_cfg = _branches[selected_branch]
+            _branch_cfg = _branches[selected_branch][selected_merk]
             st.success("Standaarden opgeslagen.")
 
 st.divider()
@@ -202,13 +209,8 @@ if st.session_state.results is not None:
 
 # ── invoerformulier ───────────────────────────────────────────────────────────
 
-st.header("1. Merktype")
-merk_type = st.radio(
-    "Kies het type account",
-    ["Overkoepelend merk (portaal)", "Eigen merk"],
-    horizontal=True,
-)
-eigen_merk = merk_type == "Eigen merk"
+st.header("1. Klantgegevens")
+eigen_merk = selected_merk == "Eigen merk"
 
 merk_info = None
 if eigen_merk:
@@ -264,6 +266,10 @@ _stad_bytes   = stad_file.getvalue()   if stad_file   else _default_stad_bytes
 variants_file = st.file_uploader(
     "Varianten plaatsnamen (optioneel .xlsx)", type="xlsx", key="variants"
 )
+_default_variants_bytes = _load_file_bytes(_branch_cfg.get("variants_path", ""))
+if not variants_file and _default_variants_bytes:
+    st.caption(f"Standaard: {_branch_cfg.get('variants_path', '')}")
+_variants_bytes = variants_file.getvalue() if variants_file else _default_variants_bytes
 
 # ── Adviesbestanden ───────────────────────────────────────────────────────────
 
@@ -378,9 +384,9 @@ if cpc_file or _bc_cpc_bytes:
                     st.success(f"CPC-adviesbestand bevestigd: {file_name}")
                     st.session_state.cpc_import = cpc_import
                     # Sla op als branche-standaard
-                    if st.button(f"💾 Sla op als standaard voor '{selected_branch}'", key="save_cpc_default"):
+                    if st.button(f"💾 Sla op als standaard voor '{selected_branch} — {selected_merk}'", key="save_cpc_default"):
                         saved = _save_branch_advice_file(selected_branch, "cpc", file_bytes, file_name)
-                        _branches[selected_branch]["cpc_file_path"] = saved
+                        _branches.setdefault(selected_branch, {}).setdefault(selected_merk, {})["cpc_file_path"] = saved
                         _save_branches(_branches)
                         st.success(f"Opgeslagen als standaard: {saved}")
 else:
@@ -467,9 +473,9 @@ if pause_file or _bc_pause_bytes:
                     st.success(f"Pauzeringsbestand bevestigd: {file_name}")
                     st.session_state.pause_import = pause_import
                     # Sla op als branche-standaard
-                    if st.button(f"💾 Sla op als standaard voor '{selected_branch}'", key="save_pause_default"):
+                    if st.button(f"💾 Sla op als standaard voor '{selected_branch} — {selected_merk}'", key="save_pause_default"):
                         saved = _save_branch_advice_file(selected_branch, "pause", file_bytes, file_name)
-                        _branches[selected_branch]["pause_file_path"] = saved
+                        _branches.setdefault(selected_branch, {}).setdefault(selected_merk, {})["pause_file_path"] = saved
                         _save_branches(_branches)
                         st.success(f"Opgeslagen als standaard: {saved}")
 else:
@@ -554,10 +560,10 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 f.write(_stad_bytes)
 
             var_path = None
-            if variants_file:
+            if _variants_bytes:
                 var_path = os.path.join(tmp, "variants.xlsx")
                 with open(var_path, "wb") as f:
-                    f.write(variants_file.getvalue())
+                    f.write(_variants_bytes)
 
             progress_bar = st.progress(0)
             status_text  = st.empty()
@@ -587,7 +593,7 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 st.session_state.build_files  = {
                     "lokaal":   _lokaal_bytes,
                     "stad":     _stad_bytes,
-                    "variants": variants_file.getvalue() if variants_file else None,
+                    "variants": _variants_bytes,
                 }
             try:
                 merged, errors = build_all(
