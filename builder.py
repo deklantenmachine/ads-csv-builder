@@ -705,6 +705,11 @@ def build_all(
     dry_rows: list[dict] = []   # voor dry-run overzicht
     total = len(sheet)
 
+    # Bepaal de kolom rechts van 'Dubbele plaats' voor grootte-aanduiding (Kleinste/Grootste)
+    _sheet_cols = list(sheet.columns)
+    _dup_idx = next((i for i, c in enumerate(_sheet_cols) if c.strip().lower() == "dubbele plaats"), -1)
+    _grootte_col = _sheet_cols[_dup_idx + 1] if _dup_idx >= 0 and _dup_idx + 1 < len(_sheet_cols) else None
+
     # Verzamel bekende plaatsen en klanten NA filtering — warnings alleen voor actieve build
     def _klant_val(r):
         v = str(r.get("Klant", "")).strip()
@@ -732,7 +737,7 @@ def build_all(
 
         if str(row.get("Dubbele plaats", "")).strip().lower() == "x":
             # Alleen de kleinste van het duplo-paar overslaan; de grootste mag door
-            grootte = str(row.get("Grootte", "")).strip().lower()
+            grootte = str(row.get(_grootte_col, "")).strip().lower() if _grootte_col else ""
             if grootte != "grootste":
                 if progress_cb:
                     progress_cb(city, i, total, skipped=True)

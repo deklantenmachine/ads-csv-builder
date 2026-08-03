@@ -55,13 +55,17 @@ def _normalize_for_fuzzy(name: str) -> str:
 
 
 def _account_similarity(a: str, b: str) -> float:
-    """Combined SequenceMatcher + token-Jaccard similarity on normalized strings."""
+    """Combined SequenceMatcher + token-Jaccard similarity on normalized strings.
+
+    Uses the average rather than the max so that a common industry suffix
+    (e.g. 'dakdekkers') shared by unrelated accounts does not inflate the score.
+    """
     seq_ratio = difflib.SequenceMatcher(None, a, b).ratio()
     a_tokens = set(_normalize_for_fuzzy(a).split())
     b_tokens = set(_normalize_for_fuzzy(b).split())
     union = a_tokens | b_tokens
     jaccard = len(a_tokens & b_tokens) / len(union) if union else 0.0
-    return max(seq_ratio, jaccard)
+    return (seq_ratio + jaccard) / 2
 
 
 def fuzzy_best_account_match(norm_query: str, norm_pool: set[str]) -> tuple[str | None, float]:
