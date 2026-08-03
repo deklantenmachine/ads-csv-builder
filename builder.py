@@ -294,17 +294,28 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
             if len(city) >= threshold:
                 if not lange_raw:
                     return ""
-                # Controleer of de lange_raw zelf ook een variant-entry heeft (geketende drempel).
-                # Voorbeeld: "Dak Vervangen In Groningen?" → "Nieuw Dak In Groningen?" (t=13)
-                #            "Nieuw Dak In Groningen?"    → "Tijd Voor Een Nieuw Dak?"  (t=18)
-                # Als stad ≥ 18 moeten beide niveaus worden toegepast.
-                sub_key = lange_raw.lower()
-                if sub_key in variants:
+                # Geketende drempel: volg de keten zolang:
+                #   - de stad het volgende drempelniveau haalt, OF
+                #   - het tussenresultaat de kolomlimiet al overschrijdt.
+                # Voorbeeld: "Dak Vervangen In Groningen?" (t=13) → "Nieuw Dak In Groningen?" (t=18)
+                #   Winterswijk Ratum (17 tekens): 17 < 18 maar "Nieuw Dak In Winterswijk Ratum?"
+                #   is 31 tekens (> 30 kolomlimiet) → toch naar "Tijd Voor Een Nieuw Dak?".
+                for _ in range(10):
+                    sub_key = lange_raw.lower()
+                    if sub_key not in variants:
+                        break
                     sub_entry = variants[sub_key]
                     sub_rule  = sub_entry["rule_info"]
-                    if sub_rule.get("rule") == "city" and len(city) >= sub_rule.get("threshold", 999):
+                    if sub_rule.get("rule") != "city":
+                        break
+                    candidate      = _case_replace(lange_raw, TEMPLATE_CITY, city)
+                    threshold_ok   = len(city) >= sub_rule.get("threshold", 999)
+                    result_too_long = col_limit is not None and len(candidate) > col_limit
+                    if threshold_ok or result_too_long:
                         lange_raw    = sub_entry["lange_raw"] or lange_raw
                         name_max_len = sub_rule.get("name_max_len", name_max_len)
+                    else:
+                        break
                 if merk_info:
                     korte = merk_info.get("korte_naam", "")
                     lange = merk_info.get("lange_naam", "")
