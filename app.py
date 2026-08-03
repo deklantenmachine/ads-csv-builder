@@ -243,13 +243,19 @@ col1, col2 = st.columns(2)
 # Auto-laden vanuit branch-configuratie als pad bestaat
 _default_lokaal_bytes = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
 # DEBUG — tijdelijk
+import pathlib
 _dbg_lokaal_path = _branch_cfg.get("lokaal_template_path", "")
+_dbg_parent = str(pathlib.Path(_dbg_lokaal_path).parent)
 with st.expander("🔍 Debug branch-config (tijdelijk)", expanded=True):
-    st.write("selected_branch:", selected_branch)
-    st.write("selected_merk:", selected_merk)
     st.write("lokaal pad (repr):", repr(_dbg_lokaal_path))
     st.write("os.path.isfile:", os.path.isfile(_dbg_lokaal_path))
-    st.write("lokaal_bytes:", None if _default_lokaal_bytes is None else f"{len(_default_lokaal_bytes)} bytes")
+    st.write("parent exists:", os.path.isdir(_dbg_parent))
+    try:
+        _dbg_files = os.listdir(_dbg_parent)
+        st.write("bestanden in map:", _dbg_files)
+    except Exception as e:
+        st.write("listdir fout:", str(e))
+    st.write("branch_files dir:", os.path.isdir(os.path.join(os.path.dirname(__file__), "branch_files")))
 _default_stad_bytes   = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
 
 with col1:
