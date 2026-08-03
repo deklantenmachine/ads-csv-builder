@@ -250,14 +250,14 @@ with col1:
         help="dak_lokaal.csv of eigen merk lokaal sjabloon"
     )
     if not lokaal_file and _default_lokaal_bytes:
-        st.caption(f"Standaard: {_branch_cfg.get('lokaal_template_path', '')}")
+        st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_branch_cfg.get('lokaal_template_path', ''))}**")
 with col2:
     stad_file = st.file_uploader(
         "+ Stad sjabloon (.csv)", type="csv", key="stad",
         help="dak + stad.csv of eigen merk stad sjabloon"
     )
     if not stad_file and _default_stad_bytes:
-        st.caption(f"Standaard: {_branch_cfg.get('stad_template_path', '')}")
+        st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_branch_cfg.get('stad_template_path', ''))}**")
 
 # Gebruik geüpload bestand of standaard uit branch-config
 _lokaal_bytes = lokaal_file.getvalue() if lokaal_file else _default_lokaal_bytes
@@ -268,7 +268,7 @@ variants_file = st.file_uploader(
 )
 _default_variants_bytes = _load_file_bytes(_branch_cfg.get("variants_path", ""))
 if not variants_file and _default_variants_bytes:
-    st.caption(f"Standaard: {_branch_cfg.get('variants_path', '')}")
+    st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_branch_cfg.get('variants_path', ''))}**")
 _variants_bytes = variants_file.getvalue() if variants_file else _default_variants_bytes
 
 # ── Adviesbestanden ───────────────────────────────────────────────────────────
