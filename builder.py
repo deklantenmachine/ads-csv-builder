@@ -302,6 +302,9 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                 #   is 31 tekens (> 30 kolomlimiet) → toch naar "Tijd Voor Een Nieuw Dak?".
                 for _ in range(10):
                     sub_key = lange_raw.lower()
+                    sub_key = sub_key.replace(TEMPLATE_COMPANY.lower(), "[bedrijfsnaam]")
+                    sub_key = sub_key.replace(TEMPLATE_REVIEW_SCORE, _KEY_REVIEW)
+                    sub_key = re.sub(r"\b" + re.escape(TEMPLATE_JAREN_GARANTIE) + r"\b jaar", _KEY_JAREN + " jaar", sub_key)
                     if sub_key not in variants:
                         break
                     sub_entry = variants[sub_key]
