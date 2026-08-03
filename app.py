@@ -1,6 +1,7 @@
 """Streamlit interface voor de Google Ads CSV builder."""
 
 import io
+import json
 import os
 import tempfile
 
@@ -13,8 +14,65 @@ from advice_parser import (
     detect_advice_file_type, AdviceFileType,
 )
 
+# ── Branch configuratie ────────────────────────────────────────────────────────
+_BRANCHES_PATH = os.path.join(os.path.dirname(__file__), "branches.json")
+
+def _load_branches() -> dict:
+    try:
+        with open(_BRANCHES_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_branches(data: dict):
+    with open(_BRANCHES_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def _load_file_bytes(path: str) -> bytes | None:
+    if path and os.path.isfile(path):
+        with open(path, "rb") as f:
+            return f.read()
+    return None
+
 st.set_page_config(page_title="Ads CSV Builder", page_icon="📦", layout="centered")
 st.title("📦 Google Ads CSV Builder")
+
+# ── Branch selector ────────────────────────────────────────────────────────────
+_branches = _load_branches()
+_branch_names = list(_branches.keys())
+
+st.header("0. Branche")
+_col_branch, _col_edit = st.columns([3, 1])
+with _col_branch:
+    selected_branch = st.selectbox("Kies branche", _branch_names, key="selected_branch")
+with _col_edit:
+    st.write("")  # vertical align
+    show_branch_config = st.toggle("Bewerk standaarden", key="show_branch_config")
+
+_branch_cfg = _branches.get(selected_branch, {})
+
+if show_branch_config:
+    with st.expander("Standaardwaarden voor deze branche", expanded=True):
+        bc_sheet_url    = st.text_input("Standaard sheet URL",       value=_branch_cfg.get("sheet_url", ""),               key="bc_sheet_url")
+        bc_sheet_name   = st.text_input("Standaard tabblad",         value=_branch_cfg.get("sheet_name", "Testtab"),        key="bc_sheet_name")
+        bc_lokaal       = st.text_input("Pad lokaal sjabloon (.csv)",  value=_branch_cfg.get("lokaal_template_path", ""),  key="bc_lokaal")
+        bc_stad         = st.text_input("Pad +stad sjabloon (.csv)",   value=_branch_cfg.get("stad_template_path", ""),    key="bc_stad")
+        bc_cpc          = st.text_input("Pad CPC-bestand (.xlsx)",     value=_branch_cfg.get("cpc_file_path", ""),         key="bc_cpc")
+        bc_pause        = st.text_input("Pad pauzeringsbestand (.xlsx)", value=_branch_cfg.get("pause_file_path", ""),     key="bc_pause")
+        if st.button("Opslaan", key="save_branch_cfg"):
+            _branches[selected_branch] = {
+                "sheet_url":            bc_sheet_url.strip(),
+                "sheet_name":           bc_sheet_name.strip(),
+                "lokaal_template_path": bc_lokaal.strip(),
+                "stad_template_path":   bc_stad.strip(),
+                "cpc_file_path":        bc_cpc.strip(),
+                "pause_file_path":      bc_pause.strip(),
+            }
+            _save_branches(_branches)
+            _branch_cfg = _branches[selected_branch]
+            st.success("Standaarden opgeslagen.")
+
+st.divider()
 
 # ── session state ─────────────────────────────────────────────────────────────
 _defaults = {
@@ -166,16 +224,29 @@ if eigen_merk:
 
 st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
+
+# Auto-laden vanuit branch-configuratie als pad bestaat
+_default_lokaal_bytes = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
+_default_stad_bytes   = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
+
 with col1:
     lokaal_file = st.file_uploader(
         "Lokaal sjabloon (.csv)", type="csv", key="lokaal",
         help="dak_lokaal.csv of eigen merk lokaal sjabloon"
     )
+    if not lokaal_file and _default_lokaal_bytes:
+        st.caption(f"Standaard: {_branch_cfg.get('lokaal_template_path', '')}")
 with col2:
     stad_file = st.file_uploader(
         "+ Stad sjabloon (.csv)", type="csv", key="stad",
         help="dak + stad.csv of eigen merk stad sjabloon"
     )
+    if not stad_file and _default_stad_bytes:
+        st.caption(f"Standaard: {_branch_cfg.get('stad_template_path', '')}")
+
+# Gebruik geüpload bestand of standaard uit branch-config
+_lokaal_bytes = lokaal_file.getvalue() if lokaal_file else _default_lokaal_bytes
+_stad_bytes   = stad_file.getvalue()   if stad_file   else _default_stad_bytes
 
 variants_file = st.file_uploader(
     "Varianten plaatsnamen (optioneel .xlsx)", type="xlsx", key="variants"
@@ -195,11 +266,17 @@ with col_cpc:
     cpc_file = st.file_uploader(
         "CPC-adviesbestand (.xlsx)", type="xlsx", key="cpc_file"
     )
+    _bc_cpc_path = _branch_cfg.get("cpc_file_path", "")
+    if not cpc_file and _bc_cpc_path:
+        st.caption(f"Standaard ingesteld: {_bc_cpc_path}")
 
 with col_pause:
     pause_file = st.file_uploader(
         "Pauzeringen-/beëindigingenbestand (.xlsx)", type="xlsx", key="pause_file"
     )
+    _bc_pause_path = _branch_cfg.get("pause_file_path", "")
+    if not pause_file and _bc_pause_path:
+        st.caption(f"Standaard ingesteld: {_bc_pause_path}")
 
 
 def _show_file_detection_error(file_name: str, file_type: AdviceFileType, wb_data: dict):
@@ -366,9 +443,10 @@ else:
 st.header("4. Google Sheets")
 sheet_url  = st.text_input(
     "URL van het Google Sheets (deelbaar via 'Iedereen met de link')",
+    value=_branch_cfg.get("sheet_url", ""),
     placeholder="https://docs.google.com/spreadsheets/d/…/edit",
 )
-sheet_name = st.text_input("Tabblad naam", value="Testtab")
+sheet_name = st.text_input("Tabblad naam", value=_branch_cfg.get("sheet_name", "Testtab"))
 
 if sheet_url.strip():
     if st.button("🔄 Laad klanten uit sheet"):
@@ -411,8 +489,8 @@ dry_run = st.checkbox(
 )
 
 if st.button("🚀 Genereer campagnes", type="primary"):
-    if not lokaal_file or not stad_file:
-        st.error("Upload beide sjabloon-CSV bestanden.")
+    if not _lokaal_bytes or not _stad_bytes:
+        st.error("Upload beide sjabloon-CSV bestanden (of stel standaardpaden in bij de branche).")
     elif not sheet_url.strip():
         st.error("Vul de Google Sheets URL in.")
     elif not geselecteerde_klanten:
@@ -432,9 +510,9 @@ if st.button("🚀 Genereer campagnes", type="primary"):
             lok_path = os.path.join(tmp, "lokaal.csv")
             sta_path = os.path.join(tmp, "stad.csv")
             with open(lok_path, "wb") as f:
-                f.write(lokaal_file.getvalue())
+                f.write(_lokaal_bytes)
             with open(sta_path, "wb") as f:
-                f.write(stad_file.getvalue())
+                f.write(_stad_bytes)
 
             var_path = None
             if variants_file:
@@ -468,8 +546,8 @@ if st.button("🚀 Genereer campagnes", type="primary"):
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs
                 st.session_state.build_files  = {
-                    "lokaal":   lokaal_file.getvalue(),
-                    "stad":     stad_file.getvalue(),
+                    "lokaal":   _lokaal_bytes,
+                    "stad":     _stad_bytes,
                     "variants": variants_file.getvalue() if variants_file else None,
                 }
             try:

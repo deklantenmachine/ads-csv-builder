@@ -731,9 +731,12 @@ def build_all(
             continue
 
         if str(row.get("Dubbele plaats", "")).strip().lower() == "x":
-            if progress_cb:
-                progress_cb(city, i, total, skipped=True)
-            continue
+            # Alleen de kleinste van het duplo-paar overslaan; de grootste mag door
+            grootte = str(row.get("Grootte", "")).strip().lower()
+            if grootte != "grootste":
+                if progress_cb:
+                    progress_cb(city, i, total, skipped=True)
+                continue
 
         # ── Rules engine: beslissingen per campagnetype ───────────────────────
         stad_excluded = city.lower() in EXCLUDED_STAD_CITIES
