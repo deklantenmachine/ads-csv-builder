@@ -40,6 +40,32 @@ EXCLUDED_STAD_CITIES: frozenset[str] = frozenset({
 SEP      = ";"
 ENCODING = "utf-8-sig"
 
+# Expliciete koppeling van klantnaam (spreadsheet) → accountnaam in CPC/pauzebestand.
+# Wordt gebruikt vóór fuzzy matching zodat naamverschillen niet tot foute matches leiden.
+_KLANT_TO_CPC_ACCOUNT: dict[str, str] = {
+    "all in dakonderhoud":                      "All In Dakdekkers",
+    "b en b dakonderhoud":                      "B&B Dakdekker",
+    "van gestel onderhoud":                     "Boersma Dakdekkers",
+    "woningverbetering buitenhuis":             "Dakdekker Buitenhuis",
+    "dakcentrale nederland":                    "DCN Dakdekkers",
+    "dakcentraal":                              "Dakcentraal",
+    "debro loodgieterswerken":                  "Debro dakdekkers",
+    "dakbeheer holland":                        "Holland Dakdekkers",
+    "jouw dak expert b.v.":                     "Jouw Dak Expert",
+    "dakreparatie nederland":                   "Jansen Dakdekker",
+    "nvr allround":                             "NVR Dakdekkers",
+    "rovaal dakbeheer":                         "SH Dakdekkers",
+    "dakbedekking van eerd":                    "Dakbedekking van Eerd",
+    "van den bogaert isolatie en daktechniek":  "Van den Bogaert Daktechniek",
+    "highservice woningonderhoud":              "Dakdekkersbedrijf Voets",
+    "dakspecialist vriezen bv":                 "Vriezen Dakdekkers",
+}
+
+
+def _resolve_cpc_account(klant: str) -> str:
+    """Vertaal klantnaam uit spreadsheet naar accountnaam in het adviesbestand."""
+    return _KLANT_TO_CPC_ACCOUNT.get(klant.strip().lower(), klant)
+
 # kolommen waar de plaatsnaam (en bedrijfsnaam) vervangen wordt
 AD_TEXT_COLS = (
     [f"Headline {i}" for i in range(1, 16)]
@@ -86,16 +112,11 @@ def _replace_exact(series: pd.Series, old: str, new: str) -> pd.Series:
 
 
 def _ensure_netnummer_label(df: pd.DataFrame, net: str) -> pd.DataFrame:
-    """Voeg 'Netnummer {net}' toe aan Labels voor alle campagne/ad group/keyword/ad/sitelink rijen."""
+    """Zet Labels op uitsluitend 'Netnummer {net}' voor alle rijen — verwijdert andere labels."""
     label = f"Netnummer {net}"
 
     def _add(val):
-        if pd.isna(val) or str(val).strip() == "":
-            return label
-        s = str(val).strip()
-        if "Netnummer" in s:
-            return re.sub(r"Netnummer \S+", label, s)
-        return f"{s};{label}"
+        return label  # altijd alleen netnummer-label bewaren
 
     has_campaign = df["Campaign"].notna() & (df["Campaign"].astype(str).str.strip() != "")
     has_location = df["Location"].notna() & (df["Location"].astype(str).str.strip() != "")
@@ -691,7 +712,8 @@ def build_all(
 
     active_rows   = sheet[sheet.apply(lambda r: not klant_filter or _klant_val(r) in klant_filter, axis=1)]
     known_cities  = {str(r.get("Plaats", "")).strip() for _, r in active_rows.iterrows()}
-    known_klanten = {_klant_val(r) for _, r in active_rows.iterrows()}
+    # Vertaal klantnamen naar CPC-accountnamen voor de warnings
+    known_klanten = {_resolve_cpc_account(_klant_val(r)) for _, r in active_rows.iterrows()}
 
     # Unmatched CPC/pauze warnings — eenmalig vóór de loop
     for w in engine.unmatched_cpc_warnings(known_klanten):
@@ -715,9 +737,10 @@ def build_all(
 
         # ── Rules engine: beslissingen per campagnetype ───────────────────────
         stad_excluded = city.lower() in EXCLUDED_STAD_CITIES
+        cpc_account = _resolve_cpc_account(klant)  # klantnaam → adviesbestand-accountnaam
 
-        stad_decision  = engine.get_city_decision(klant, city)
-        local_decision = engine.get_local_decision(klant, city)
+        stad_decision  = engine.get_city_decision(cpc_account, city)
+        local_decision = engine.get_local_decision(cpc_account, city)
 
         # Blokkerende fouten (biedstrategie-incompatibiliteit)
         for err in stad_decision.blocking_errors + local_decision.blocking_errors:

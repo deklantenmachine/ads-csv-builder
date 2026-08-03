@@ -368,7 +368,7 @@ sheet_url  = st.text_input(
     "URL van het Google Sheets (deelbaar via 'Iedereen met de link')",
     placeholder="https://docs.google.com/spreadsheets/d/…/edit",
 )
-sheet_name = st.text_input("Tabblad naam", value="DakPro NL Plaatsen")
+sheet_name = st.text_input("Tabblad naam", value="Testtab")
 
 if sheet_url.strip():
     if st.button("🔄 Laad klanten uit sheet"):
