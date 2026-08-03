@@ -34,6 +34,19 @@ def _load_file_bytes(path: str) -> bytes | None:
             return f.read()
     return None
 
+def _branch_files_dir(branch_name: str) -> str:
+    d = os.path.join(os.path.dirname(__file__), "branch_files", branch_name)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+def _save_branch_advice_file(branch_name: str, kind: str, file_bytes: bytes, orig_name: str) -> str:
+    """Sla adviesbestand op als branch-standaard. Geeft het opgeslagen pad terug."""
+    ext = os.path.splitext(orig_name)[1] or ".xlsx"
+    dest = os.path.join(_branch_files_dir(branch_name), f"{kind}{ext}")
+    with open(dest, "wb") as f:
+        f.write(file_bytes)
+    return dest
+
 st.set_page_config(page_title="Ads CSV Builder", page_icon="📦", layout="centered")
 st.title("📦 Google Ads CSV Builder")
 
@@ -266,17 +279,11 @@ with col_cpc:
     cpc_file = st.file_uploader(
         "CPC-adviesbestand (.xlsx)", type="xlsx", key="cpc_file"
     )
-    _bc_cpc_path = _branch_cfg.get("cpc_file_path", "")
-    if not cpc_file and _bc_cpc_path:
-        st.caption(f"Standaard ingesteld: {_bc_cpc_path}")
 
 with col_pause:
     pause_file = st.file_uploader(
         "Pauzeringen-/beëindigingenbestand (.xlsx)", type="xlsx", key="pause_file"
     )
-    _bc_pause_path = _branch_cfg.get("pause_file_path", "")
-    if not pause_file and _bc_pause_path:
-        st.caption(f"Standaard ingesteld: {_bc_pause_path}")
 
 
 def _show_file_detection_error(file_name: str, file_type: AdviceFileType, wb_data: dict):
@@ -293,9 +300,14 @@ def _show_file_detection_error(file_name: str, file_type: AdviceFileType, wb_dat
 
 
 # CPC-bestand verwerken
-if cpc_file:
-    file_bytes = cpc_file.getvalue()
-    file_name  = cpc_file.name
+_bc_cpc_path   = _branch_cfg.get("cpc_file_path", "")
+_bc_cpc_bytes  = _load_file_bytes(_bc_cpc_path) if not cpc_file else None
+
+if cpc_file or _bc_cpc_bytes:
+    file_bytes = cpc_file.getvalue() if cpc_file else _bc_cpc_bytes
+    file_name  = cpc_file.name       if cpc_file else os.path.basename(_bc_cpc_path)
+    _from_default = not cpc_file and bool(_bc_cpc_bytes)
+
     file_type, wb_data, _ = detect_advice_file_type(file_bytes, file_name)
 
     if file_type == AdviceFileType.UNKNOWN:
@@ -319,20 +331,24 @@ if cpc_file:
             st.session_state.pause_import = pause_import
         st.session_state.cpc_confirmed = True
 
-    else:
-        # CPC_ADVICE of PAUSE_ADVICE
-        if file_type == AdviceFileType.PAUSE_ADVICE:
+    elif file_type == AdviceFileType.PAUSE_ADVICE:
+        if not _from_default:
             st.warning(
                 f"**{file_name}** is herkend als pauzeringsbestand, "
                 f"niet als CPC-adviesbestand. Verplaats dit naar het pauzeringsveld."
             )
-            st.session_state.cpc_import    = None
-            st.session_state.cpc_confirmed = False
-        else:
-            cpc_import = parse_cpc_advice(file_bytes, file_name)
+        st.session_state.cpc_import    = None
+        st.session_state.cpc_confirmed = False
 
-            # Preview
-            summary = cpc_import.summary
+    else:  # CPC_ADVICE
+        cpc_import = parse_cpc_advice(file_bytes, file_name)
+        summary = cpc_import.summary
+
+        if _from_default:
+            st.success(f"CPC-adviesbestand geladen uit branche-standaard: **{file_name}**")
+            st.session_state.cpc_import    = cpc_import
+            st.session_state.cpc_confirmed = True
+        else:
             st.subheader(f"CPC-preview: {file_name}")
             col_a, col_b, col_c = st.columns(3)
             col_a.metric("Accounts", summary["accounts"])
@@ -361,15 +377,26 @@ if cpc_file:
                 else:
                     st.success(f"CPC-adviesbestand bevestigd: {file_name}")
                     st.session_state.cpc_import = cpc_import
+                    # Sla op als branche-standaard
+                    if st.button(f"💾 Sla op als standaard voor '{selected_branch}'", key="save_cpc_default"):
+                        saved = _save_branch_advice_file(selected_branch, "cpc", file_bytes, file_name)
+                        _branches[selected_branch]["cpc_file_path"] = saved
+                        _save_branches(_branches)
+                        st.success(f"Opgeslagen als standaard: {saved}")
 else:
     st.session_state.cpc_import    = None
     st.session_state.cpc_confirmed = False
 
 
 # Pauzeringsbestand verwerken
-if pause_file:
-    file_bytes = pause_file.getvalue()
-    file_name  = pause_file.name
+_bc_pause_path  = _branch_cfg.get("pause_file_path", "")
+_bc_pause_bytes = _load_file_bytes(_bc_pause_path) if not pause_file else None
+
+if pause_file or _bc_pause_bytes:
+    file_bytes = pause_file.getvalue() if pause_file else _bc_pause_bytes
+    file_name  = pause_file.name       if pause_file else os.path.basename(_bc_pause_path)
+    _from_default = not pause_file and bool(_bc_pause_bytes)
+
     file_type, wb_data, _ = detect_advice_file_type(file_bytes, file_name)
 
     if file_type == AdviceFileType.UNKNOWN:
@@ -393,18 +420,24 @@ if pause_file:
             st.session_state.cpc_import = cpc_import
         st.session_state.pause_confirmed = True
 
-    else:
-        if file_type == AdviceFileType.CPC_ADVICE:
+    elif file_type == AdviceFileType.CPC_ADVICE:
+        if not _from_default:
             st.warning(
                 f"**{file_name}** is herkend als CPC-adviesbestand, "
                 f"niet als pauzeringsbestand. Verplaats dit naar het CPC-veld."
             )
-            st.session_state.pause_import    = None
-            st.session_state.pause_confirmed = False
-        else:
-            pause_import = parse_pause_advice(file_bytes, file_name)
+        st.session_state.pause_import    = None
+        st.session_state.pause_confirmed = False
 
-            summary = pause_import.summary
+    else:  # PAUSE_ADVICE
+        pause_import = parse_pause_advice(file_bytes, file_name)
+        summary = pause_import.summary
+
+        if _from_default:
+            st.success(f"Pauzeringsbestand geladen uit branche-standaard: **{file_name}**")
+            st.session_state.pause_import    = pause_import
+            st.session_state.pause_confirmed = True
+        else:
             st.subheader(f"Pauze-preview: {file_name}")
             col_a, col_b = st.columns(2)
             col_a.metric("Accounts", summary["accounts"])
@@ -433,6 +466,12 @@ if pause_file:
                 else:
                     st.success(f"Pauzeringsbestand bevestigd: {file_name}")
                     st.session_state.pause_import = pause_import
+                    # Sla op als branche-standaard
+                    if st.button(f"💾 Sla op als standaard voor '{selected_branch}'", key="save_pause_default"):
+                        saved = _save_branch_advice_file(selected_branch, "pause", file_bytes, file_name)
+                        _branches[selected_branch]["pause_file_path"] = saved
+                        _save_branches(_branches)
+                        st.success(f"Opgeslagen als standaard: {saved}")
 else:
     st.session_state.pause_import    = None
     st.session_state.pause_confirmed = False
