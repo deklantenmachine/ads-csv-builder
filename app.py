@@ -69,28 +69,55 @@ _branch_cfg = _branches.get(selected_branch, {}).get(selected_merk, {})
 
 if show_branch_config:
     with st.expander(f"Standaardwaarden voor {selected_branch} — {selected_merk}", expanded=True):
-        bc_sheet_url = st.text_input("Standaard sheet URL",            value=_branch_cfg.get("sheet_url", ""),            key="bc_sheet_url")
-        bc_sheet_name = st.text_input("Standaard tabblad",             value=_branch_cfg.get("sheet_name", "Testtab"),    key="bc_sheet_name")
-        bc_lokaal    = st.text_input("Pad lokaal sjabloon (.csv)",     value=_branch_cfg.get("lokaal_template_path", ""), key="bc_lokaal")
-        bc_stad      = st.text_input("Pad +stad sjabloon (.csv)",      value=_branch_cfg.get("stad_template_path", ""),   key="bc_stad")
-        bc_variants  = st.text_input("Pad variantenbestand (.xlsx)",   value=_branch_cfg.get("variants_path", ""),        key="bc_variants")
-        bc_cpc       = st.text_input("Pad CPC-bestand (.xlsx)",        value=_branch_cfg.get("cpc_file_path", ""),        key="bc_cpc")
-        bc_pause     = st.text_input("Pad pauzeringsbestand (.xlsx)",  value=_branch_cfg.get("pause_file_path", ""),      key="bc_pause")
-        if st.button("Opslaan", key="save_branch_cfg"):
-            if selected_branch not in _branches:
-                _branches[selected_branch] = {}
-            _branches[selected_branch][selected_merk] = {
+        bc_sheet_url  = st.text_input("Standaard sheet URL",   value=_branch_cfg.get("sheet_url", ""),         key="bc_sheet_url")
+        bc_sheet_name = st.text_input("Standaard tabblad",     value=_branch_cfg.get("sheet_name", "Testtab"), key="bc_sheet_name")
+
+        st.markdown("**Sjabloon- en variantenbestanden uploaden als standaard:**")
+        _bfd = os.path.join(os.path.dirname(__file__), "branch_files", selected_branch, selected_merk)
+        os.makedirs(_bfd, exist_ok=True)
+
+        def _save_branch_file(upload, key_name: str, ext: str) -> str | None:
+            if upload is None:
+                return None
+            dest = os.path.join(_bfd, f"{key_name}{ext}")
+            with open(dest, "wb") as _f:
+                _f.write(upload.getvalue())
+            return dest
+
+        bc_col1, bc_col2 = st.columns(2)
+        with bc_col1:
+            bc_up_lokaal   = st.file_uploader("Lokaal sjabloon (.csv)",     type="csv",  key="bc_up_lokaal")
+            bc_up_variants = st.file_uploader("Variantenbestand (.xlsx)",   type="xlsx", key="bc_up_variants")
+        with bc_col2:
+            bc_up_stad     = st.file_uploader("Stad sjabloon (.csv)",       type="csv",  key="bc_up_stad")
+            bc_up_cpc      = st.file_uploader("CPC-adviesbestand (.xlsx)",  type="xlsx", key="bc_up_cpc")
+        bc_up_pause = st.file_uploader("Pauzeringsbestand (.xlsx)", type="xlsx", key="bc_up_pause")
+
+        # Huidige paden tonen
+        for _lbl, _key in [("Lokaal", "lokaal_template_path"), ("Stad", "stad_template_path"),
+                            ("Varianten", "variants_path"), ("CPC", "cpc_file_path"), ("Pauze", "pause_file_path")]:
+            _p = _branch_cfg.get(_key, "")
+            if _p:
+                _ok = "✓" if os.path.isfile(_p) else "✗ niet gevonden"
+                st.caption(f"{_lbl}: {os.path.basename(_p)} {_ok}")
+
+        if st.button("💾 Sla bestanden op als standaard", key="save_branch_cfg"):
+            _new_cfg = {
                 "sheet_url":            bc_sheet_url.strip(),
                 "sheet_name":           bc_sheet_name.strip(),
-                "lokaal_template_path": bc_lokaal.strip(),
-                "stad_template_path":   bc_stad.strip(),
-                "variants_path":        bc_variants.strip(),
-                "cpc_file_path":        bc_cpc.strip(),
-                "pause_file_path":      bc_pause.strip(),
+                "lokaal_template_path": _save_branch_file(bc_up_lokaal,   "lokaal",   ".csv")  or _branch_cfg.get("lokaal_template_path", ""),
+                "stad_template_path":   _save_branch_file(bc_up_stad,     "stad",     ".csv")  or _branch_cfg.get("stad_template_path", ""),
+                "variants_path":        _save_branch_file(bc_up_variants,  "variants", ".xlsx") or _branch_cfg.get("variants_path", ""),
+                "cpc_file_path":        _save_branch_file(bc_up_cpc,      "cpc",      ".xlsx") or _branch_cfg.get("cpc_file_path", ""),
+                "pause_file_path":      _save_branch_file(bc_up_pause,    "pause",    ".xlsx") or _branch_cfg.get("pause_file_path", ""),
             }
+            if selected_branch not in _branches:
+                _branches[selected_branch] = {}
+            _branches[selected_branch][selected_merk] = _new_cfg
             _save_branches(_branches)
-            _branch_cfg = _branches[selected_branch][selected_merk]
+            _branch_cfg = _new_cfg
             st.success("Standaarden opgeslagen.")
+            st.rerun()
 
 st.divider()
 
@@ -242,20 +269,6 @@ col1, col2 = st.columns(2)
 
 # Auto-laden vanuit branch-configuratie als pad bestaat
 _default_lokaal_bytes = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
-# DEBUG — tijdelijk
-import pathlib
-_dbg_lokaal_path = _branch_cfg.get("lokaal_template_path", "")
-_dbg_parent = str(pathlib.Path(_dbg_lokaal_path).parent)
-with st.expander("🔍 Debug branch-config (tijdelijk)", expanded=True):
-    st.write("lokaal pad (repr):", repr(_dbg_lokaal_path))
-    st.write("os.path.isfile:", os.path.isfile(_dbg_lokaal_path))
-    st.write("parent exists:", os.path.isdir(_dbg_parent))
-    try:
-        _dbg_files = os.listdir(_dbg_parent)
-        st.write("bestanden in map:", _dbg_files)
-    except Exception as e:
-        st.write("listdir fout:", str(e))
-    st.write("branch_files dir:", os.path.isdir(os.path.join(os.path.dirname(__file__), "branch_files")))
 _default_stad_bytes   = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
 
 with col1:
