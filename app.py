@@ -243,12 +243,13 @@ col1, col2 = st.columns(2)
 # Auto-laden vanuit branch-configuratie als pad bestaat
 _default_lokaal_bytes = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
 # DEBUG — tijdelijk
-with st.expander("🔍 Debug branch-config (tijdelijk)", expanded=False):
+_dbg_lokaal_path = _branch_cfg.get("lokaal_template_path", "")
+with st.expander("🔍 Debug branch-config (tijdelijk)", expanded=True):
     st.write("selected_branch:", selected_branch)
     st.write("selected_merk:", selected_merk)
-    st.write("_branch_cfg:", _branch_cfg)
+    st.write("lokaal pad (repr):", repr(_dbg_lokaal_path))
+    st.write("os.path.isfile:", os.path.isfile(_dbg_lokaal_path))
     st.write("lokaal_bytes:", None if _default_lokaal_bytes is None else f"{len(_default_lokaal_bytes)} bytes")
-    st.write("stad_bytes:", None if not _load_file_bytes(_branch_cfg.get("stad_template_path","")) else "OK")
 _default_stad_bytes   = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
 
 with col1:
