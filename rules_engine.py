@@ -101,10 +101,14 @@ class CampaignBuildRulesEngine:
         cpc_import:            CpcAdviceImport | None,
         pause_import:          PauseAdviceImport | None,
         template_bid_strategy: str = "",
+        fallback_stad_cents:   int | None = None,
+        fallback_lokaal_cents: int | None = None,
     ):
         self._cpc      = cpc_import
         self._pause    = pause_import
         self._strategy = template_bid_strategy.strip()
+        self._fallback_stad_cents   = fallback_stad_cents
+        self._fallback_lokaal_cents = fallback_lokaal_cents
         self._supports_manual_cpc = (
             self._strategy.lower() in _MANUAL_CPC_STRATEGIES
         )
@@ -311,7 +315,15 @@ class CampaignBuildRulesEngine:
                     f"€{default_rule.cpc_in_cents/100:.2f}", "CAMPAIGN",
                 ))
             else:
-                if cpc_account:
+                # Geen specifieke regel gevonden — probeer fallback CPC
+                fallback = (
+                    self._fallback_stad_cents   if campaign_type == CampaignType.REGULAR_CITY
+                    else self._fallback_lokaal_cents
+                )
+                if fallback is not None:
+                    decision.campaign_cpc_cents = fallback
+                    decision.ad_group_cpc_cents = fallback
+                elif cpc_account:
                     decision.warnings.append(
                         f"Geen CPC-advies gevonden voor account '{account}' / "
                         f"{campaign_type.value}."

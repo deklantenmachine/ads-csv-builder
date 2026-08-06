@@ -705,6 +705,8 @@ def build_all(
     pause_import:         PauseAdviceImport | None = None,
     dry_run:              bool = False,
     progress_cb=None,
+    fallback_stad_cents:   int | None = None,
+    fallback_lokaal_cents: int | None = None,
 ) -> tuple[dict, list[str]]:
 
     df_lokaal = pd.read_csv(lokaal_path, sep=SEP, encoding=ENCODING, low_memory=False)
@@ -722,9 +724,11 @@ def build_all(
     bid_strategy = bid_strategy_lok or bid_strategy_sta
 
     engine = CampaignBuildRulesEngine(
-        cpc_import            = cpc_import,
-        pause_import          = pause_import,
-        template_bid_strategy = bid_strategy,
+        cpc_import             = cpc_import,
+        pause_import           = pause_import,
+        template_bid_strategy  = bid_strategy,
+        fallback_stad_cents    = fallback_stad_cents,
+        fallback_lokaal_cents  = fallback_lokaal_cents,
     )
 
     results:  dict      = {}

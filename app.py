@@ -552,6 +552,25 @@ ad_schedule_override = st.text_area(
     height=68,
 )
 
+# ── Fallback CPC ─────────────────────────────────────────────────────────────
+
+st.header("6b. Fallback CPC (optioneel)")
+st.caption("Wordt gebruikt wanneer een stad/klant geen CPC-regel heeft in het adviesbestand.")
+_fb_col1, _fb_col2 = st.columns(2)
+with _fb_col1:
+    _fb_stad_str   = st.text_input("Fallback +Stad CPC (€)", value="6.52", key="fb_stad")
+with _fb_col2:
+    _fb_lokaal_str = st.text_input("Fallback Lokaal CPC (€)", value="5.02", key="fb_lokaal")
+
+def _parse_cpc_euro(s: str) -> int | None:
+    try:
+        return round(float(s.replace(",", ".")) * 100)
+    except (ValueError, AttributeError):
+        return None
+
+_fallback_stad_cents   = _parse_cpc_euro(_fb_stad_str)
+_fallback_lokaal_cents = _parse_cpc_euro(_fb_lokaal_str)
+
 # ── Dry-run toggle ────────────────────────────────────────────────────────────
 
 st.header("7. Genereer")
@@ -607,13 +626,15 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                     log_lines.append(f"✅ {city}")
 
             _shared_kwargs = dict(
-                sheet_url            = sheet_url,
-                sheet_name           = sheet_name,
-                klant_filter         = geselecteerde_klanten,
-                merk_info            = merk_info if eigen_merk else None,
-                ad_schedule_override = ad_schedule_override,
-                cpc_import           = st.session_state.cpc_import,
-                pause_import         = st.session_state.pause_import,
+                sheet_url              = sheet_url,
+                sheet_name             = sheet_name,
+                klant_filter           = geselecteerde_klanten,
+                merk_info              = merk_info if eigen_merk else None,
+                ad_schedule_override   = ad_schedule_override,
+                cpc_import             = st.session_state.cpc_import,
+                pause_import           = st.session_state.pause_import,
+                fallback_stad_cents    = _fallback_stad_cents,
+                fallback_lokaal_cents  = _fallback_lokaal_cents,
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs
