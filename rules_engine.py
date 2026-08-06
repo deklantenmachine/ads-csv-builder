@@ -390,11 +390,12 @@ class CampaignBuildRulesEngine:
         for r in self._pause.local_campaign_rules:
             if r.normalized_account != norm_account:
                 continue
-            # match by city name inside campaign name, or by exact campaign name
-            if norm_city and norm_city in r.normalized_campaign_name:
-                return r
+            # Exacte campagnenaam-match (wanneer caller een specifieke naam meegeeft)
             if norm_campaign and norm_campaign == r.normalized_campaign_name:
                 return r
+            # City-in-campaignnaam alleen als er een expliciete campagnenaam meekomt;
+            # zonder naam kan "amstenrade" per ongeluk matchen op een beëindigdregel
+            # voor een andere campagne zoals "Dakdekker Amstenrade".
         return None
 
     def _find_default(
