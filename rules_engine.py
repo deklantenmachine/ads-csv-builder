@@ -315,12 +315,12 @@ class CampaignBuildRulesEngine:
                     f"€{default_rule.cpc_in_cents/100:.2f}", "CAMPAIGN",
                 ))
             else:
-                # Geen specifieke regel gevonden — probeer fallback CPC
+                # Geen specifieke regel gevonden — fallback alleen als CPC-bestand geladen is
                 fallback = (
                     self._fallback_stad_cents   if campaign_type == CampaignType.REGULAR_CITY
                     else self._fallback_lokaal_cents
                 )
-                if fallback is not None:
+                if fallback is not None and cpc_account:
                     decision.campaign_cpc_cents = fallback
                     decision.ad_group_cpc_cents = fallback
                 elif cpc_account:
