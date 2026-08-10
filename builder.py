@@ -34,7 +34,7 @@ _KEY_JAREN  = "[jarengarantie]"
 EXCLUDED_STAD_CITIES: frozenset[str] = frozenset({
     "huizen", "zetten", "best", "dieren", "echt",
     "hoornaar", "heel", "enter", "zeeland", "noorden",
-    "handel",
+    "handel", "een",
 })
 
 SEP      = ";"
