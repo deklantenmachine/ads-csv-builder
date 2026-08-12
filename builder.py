@@ -351,8 +351,10 @@ _COL_CHAR_LIMITS: dict[str, int] = {
 }
 
 
-def _apply_eigen_placeholders(text: str, merk_info: dict, city: str, col: str = "") -> str:
-    """Vervang [Bedrijfsnaam], [ReviewScore], [JarenGarantie] in één string.
+def _apply_eigen_placeholders(
+    text: str, merk_info: dict, city: str, col: str = "", tmpl_company: str = TEMPLATE_COMPANY
+) -> str:
+    """Vervang [Bedrijfsnaam], [ReviewScore], [JarenGarantie] en sjabloon-bedrijfsnaam in één string.
 
     Kiest automatisch de korte bedrijfsnaam als de lange naam de tekenlimiet
     voor de betreffende kolom zou overschrijden.
@@ -360,16 +362,27 @@ def _apply_eigen_placeholders(text: str, merk_info: dict, city: str, col: str = 
     korte = merk_info.get("korte_naam", "")
     lange = merk_info.get("lange_naam", "") or korte
 
-    # Probeer lange naam; val terug op korte als het resultaat te lang is
     limit = _COL_CHAR_LIMITS.get(col)
+
+    # Vervang sjabloon-bedrijfsnaam (bijv. "Van Beynen" of "DCN") door echte naam
+    if tmpl_company and tmpl_company in text:
+        # Gebruik lange naam tenzij die te lang maakt
+        if limit:
+            met_lange = text.replace(tmpl_company, lange)
+            bedrijfsnaam = korte if len(met_lange) > limit else lange
+        else:
+            bedrijfsnaam = lange
+        text = _case_replace(text, tmpl_company, bedrijfsnaam)
+
+    # Vervang ook generieke [Bedrijfsnaam] placeholder (voor Dakdekker-stijl varianten)
     if limit and "[Bedrijfsnaam]" in text:
         met_lange = text.replace("[Bedrijfsnaam]", lange)
         bedrijfsnaam = korte if len(met_lange) > limit else lange
     else:
         bedrijfsnaam = lange
-
     text = text.replace("[Bedrijfsnaam]", bedrijfsnaam)
-    text = text.replace("[ReviewScore]",  merk_info.get("review_score",    ""))
+
+    text = text.replace("[ReviewScore]",   merk_info.get("review_score",    ""))
     text = text.replace("[JarenGarantie]", merk_info.get("jaren_garantie", ""))
     return text
 
@@ -441,9 +454,13 @@ def process_city(
     variants:   dict | None = None,
     merk_info:  dict | None = None,   # None = portaal mode
     ad_schedule_override: str = "",   # tool-veld overschrijft sheet indien ingevuld
+    tmpl_city:    str | None = None,
+    tmpl_company: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     city  = str(row["Plaats"]).strip()
+    _tc   = tmpl_city    or TEMPLATE_CITY
+    _tco  = tmpl_company or TEMPLATE_COMPANY
 
     # Ad Schedule: tool-veld heeft voorrang, anders uit sheet
     ad_schedule = ad_schedule_override.strip() or str(row.get("Ad Schedule", "")).strip()
@@ -510,9 +527,9 @@ def process_city(
                 df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).str.replace(
                     TEMPLATE_DOMAIN, client_domain, regex=False
                 )
-                # vervang ook kw=Groningen in URL
+                # vervang ook kw=Nijmegen/Groningen in URL
                 df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                    lambda v: _case_replace(v, TEMPLATE_CITY, city)
+                    lambda v: _case_replace(v, _tc, city)
                 )
                 # vervang tel= parameter in URL (ongeacht welk nummer in sjabloon staat)
                 _ph = phone  # capture voor lambda
@@ -539,11 +556,11 @@ def process_city(
             elif merk_info:
                 df[col] = df[col].apply(
                     lambda v, _col=col: _apply_eigen_placeholders(
-                        _case_replace(str(v), TEMPLATE_CITY, city), merk_info, city, col=_col
+                        _case_replace(str(v), _tc, city), merk_info, city, col=_col, tmpl_company=_tco
                     ) if (pd.notna(v) and str(v).strip()) else v
                 )
             else:
-                df[col] = _replace_in_col(df[col], TEMPLATE_CITY, city)
+                df[col] = _replace_in_col(df[col], _tc, city)
 
         # Tekenlimiet-vangnet: vervang lange naam door korte als kolom te lang is.
         # Vangt gevallen op waarbij de naam al ingebakken is in de Excel-variant.
@@ -586,20 +603,20 @@ def process_city(
     sta = _ensure_netnummer_label(sta, net)
 
     # + Stad specifiek
-    sta["Ad Group"] = _replace_in_col(sta["Ad Group"], TEMPLATE_CITY, city)
-    sta["Keyword"]  = _replace_in_col(sta["Keyword"],  TEMPLATE_CITY, city)
+    sta["Ad Group"] = _replace_in_col(sta["Ad Group"], _tc, city)
+    sta["Keyword"]  = _replace_in_col(sta["Keyword"],  _tc, city)
     if merk_info:
         sta["Ad Group"] = sta["Ad Group"].apply(
-            lambda v: _apply_eigen_placeholders(str(v), merk_info, city)
+            lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco)
             if pd.notna(v) else v
         )
         sta["Keyword"] = sta["Keyword"].apply(
-            lambda v: _apply_eigen_placeholders(str(v), merk_info, city)
+            lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco)
             if pd.notna(v) else v
         )
 
     # Lokaal specifiek
-    lok["Campaign"] = _replace_in_col(lok["Campaign"], TEMPLATE_CITY, city)
+    lok["Campaign"] = _replace_in_col(lok["Campaign"], _tc, city)
 
     # Lokale campagne overslaan als locatiedata ontbreekt
     if skip_lokaal:
@@ -707,7 +724,13 @@ def build_all(
     progress_cb=None,
     fallback_stad_cents:   int | None = None,
     fallback_lokaal_cents: int | None = None,
+    template_city:        str | None = None,
+    template_company:     str | None = None,
 ) -> tuple[dict, list[str]]:
+
+    # Overschrijf template-placeholders als de branche andere waarden gebruikt
+    _tmpl_city    = template_city    or TEMPLATE_CITY
+    _tmpl_company = template_company or TEMPLATE_COMPANY
 
     df_lokaal = pd.read_csv(lokaal_path, sep=SEP, encoding=ENCODING, low_memory=False)
     df_stad   = pd.read_csv(stad_path,   sep=SEP, encoding=ENCODING, low_memory=False)
@@ -814,7 +837,8 @@ def build_all(
         # ── Campagnes bouwen ──────────────────────────────────────────────────
         try:
             lok_df, sta_df = process_city(
-                df_lokaal, df_stad, row, variants, merk_info, ad_schedule_override
+                df_lokaal, df_stad, row, variants, merk_info, ad_schedule_override,
+                tmpl_city=_tmpl_city, tmpl_company=_tmpl_company,
             )
         except Exception as exc:
             errors.append(f"{city}: {exc}")

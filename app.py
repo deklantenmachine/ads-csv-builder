@@ -711,6 +711,8 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 pause_import           = st.session_state.pause_import,
                 fallback_stad_cents    = _fallback_stad_cents,
                 fallback_lokaal_cents  = _fallback_lokaal_cents,
+                template_city          = _branch_cfg.get("template_city") or None,
+                template_company       = _branch_cfg.get("template_company") or None,
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs

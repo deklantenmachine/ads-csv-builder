@@ -15,7 +15,9 @@
         "stad_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\stad_laagste.csv",
         "variants_path": "",
         "cpc_file_path": "",
-        "pause_file_path": ""
+        "pause_file_path": "",
+        "template_city": "Nijmegen",
+        "template_company": "Van Beynen"
       }
     },
     "Overkoepelend merk (portaal)": {
@@ -28,7 +30,9 @@
         "stad_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\stad_laagste.csv",
         "variants_path": "",
         "cpc_file_path": "",
-        "pause_file_path": ""
+        "pause_file_path": "",
+        "template_city": "Nijmegen",
+        "template_company": "DSB"
       }
     }
   },
