@@ -1,4 +1,37 @@
 {
+  "Schoorsteenveger": {
+    "_ui": {
+      "toon_uitgebreide_merk_info": false,
+      "toon_adviesbestanden": false,
+      "toon_fallback_cpc": false
+    },
+    "Eigen merk": {
+      "NL": {
+        "sheet_url": "",
+        "sheet_name": "Testtab",
+        "lokaal_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\lokaal_hoogste.csv",
+        "stad_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\stad_hoogste.csv",
+        "lokaal_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\lokaal_laagste.csv",
+        "stad_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\stad_laagste.csv",
+        "variants_path": "",
+        "cpc_file_path": "",
+        "pause_file_path": ""
+      }
+    },
+    "Overkoepelend merk (portaal)": {
+      "NL": {
+        "sheet_url": "",
+        "sheet_name": "Testtab",
+        "lokaal_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\lokaal_hoogste.csv",
+        "stad_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\stad_hoogste.csv",
+        "lokaal_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\lokaal_laagste.csv",
+        "stad_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\stad_laagste.csv",
+        "variants_path": "",
+        "cpc_file_path": "",
+        "pause_file_path": ""
+      }
+    }
+  },
   "Dakdekker": {
     "Eigen merk": {
       "sheet_url": "https://docs.google.com/spreadsheets/d/11FbSGdbA96v60j2JIih5w46X_3fX4tDboBPQ2VMtduE/edit?usp=sharing",

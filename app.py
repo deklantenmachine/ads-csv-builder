@@ -56,16 +56,36 @@ _branch_names   = list(_branches.keys())
 _MERK_TYPES     = ["Eigen merk", "Overkoepelend merk (portaal)"]
 
 st.header("0. Branche & merktype")
-_col_branch, _col_merk, _col_edit = st.columns([2, 2, 1])
+_col_branch, _col_merk, _col_land, _col_edit = st.columns([2, 2, 1, 1])
 with _col_branch:
     selected_branch = st.selectbox("Branche", _branch_names, key="selected_branch")
 with _col_merk:
     selected_merk = st.selectbox("Merktype", _MERK_TYPES, key="selected_merk")
+
+# Land selector: toon alleen als de branche land-aware is (merktype heeft "NL"/"BE" sub-keys)
+_merk_raw = _branches.get(selected_branch, {}).get(selected_merk, {})
+_is_land_aware = any(k in _merk_raw for k in ["NL", "BE"])
+_landen = [k for k in ["NL", "BE"] if k in _merk_raw] if _is_land_aware else []
+
+with _col_land:
+    if _is_land_aware:
+        selected_land = st.selectbox("Land", _landen, key="selected_land")
+    else:
+        selected_land = "NL"
+        st.write("")
+
 with _col_edit:
     st.write("")
     show_branch_config = st.toggle("Bewerk standaarden", key="show_branch_config")
 
-_branch_cfg = _branches.get(selected_branch, {}).get(selected_merk, {})
+# Haal de juiste config op (land-aware of flat)
+_branch_cfg = _merk_raw.get(selected_land, {}) if _is_land_aware else _merk_raw
+
+# Branch-level UI configuratie
+_ui_cfg = _branches.get(selected_branch, {}).get("_ui", {})
+_toon_uitgebreide_merk_info = _ui_cfg.get("toon_uitgebreide_merk_info", True)
+_toon_adviesbestanden       = _ui_cfg.get("toon_adviesbestanden",        True)
+_toon_fallback_cpc          = _ui_cfg.get("toon_fallback_cpc",           True)
 
 # CPC-positie toggle: toon alleen als er laagste-paden zijn geconfigureerd
 _heeft_laagste = bool(
@@ -268,27 +288,40 @@ eigen_merk = selected_merk == "Eigen merk"
 merk_info = None
 if eigen_merk:
     st.subheader("Klantgegevens")
-    col1, col2 = st.columns(2)
-    with col1:
-        korte_naam     = st.text_input("Korte bedrijfsnaam", placeholder="DCN")
-        review_score   = st.text_input("Review score", placeholder="9.2")
-    with col2:
-        lange_naam     = st.text_input("Lange bedrijfsnaam", placeholder="DCN Dakdekkers")
-        jaren_garantie = st.text_input("Jaren garantie", placeholder="10")
-
-    usp = st.text_input(
-        "Overige USP (leeg = fallback uit variantenbestand)",
-        placeholder="bijv. Al 30 jaar vakmanschap"
-    )
-
-    merk_info = {
-        "korte_naam":     korte_naam.strip(),
-        "lange_naam":     lange_naam.strip(),
-        "review_score":   review_score.strip(),
-        "jaren_garantie": jaren_garantie.strip(),
-        "usp":            usp.strip(),
-        "usp_fallback":   "100% Tevreden? Dan Wij Ook",
-    }
+    if _toon_uitgebreide_merk_info:
+        col1, col2 = st.columns(2)
+        with col1:
+            korte_naam     = st.text_input("Korte bedrijfsnaam", placeholder="DCN")
+            review_score   = st.text_input("Review score", placeholder="9.2")
+        with col2:
+            lange_naam     = st.text_input("Lange bedrijfsnaam", placeholder="DCN Dakdekkers")
+            jaren_garantie = st.text_input("Jaren garantie", placeholder="10")
+        usp = st.text_input(
+            "Overige USP (leeg = fallback uit variantenbestand)",
+            placeholder="bijv. Al 30 jaar vakmanschap"
+        )
+        merk_info = {
+            "korte_naam":     korte_naam.strip(),
+            "lange_naam":     lange_naam.strip(),
+            "review_score":   review_score.strip(),
+            "jaren_garantie": jaren_garantie.strip(),
+            "usp":            usp.strip(),
+            "usp_fallback":   "100% Tevreden? Dan Wij Ook",
+        }
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            korte_naam = st.text_input("Korte bedrijfsnaam", placeholder="VB")
+        with col2:
+            lange_naam = st.text_input("Lange bedrijfsnaam", placeholder="Van Beynen Schoorsteenvegers")
+        merk_info = {
+            "korte_naam":     korte_naam.strip(),
+            "lange_naam":     lange_naam.strip(),
+            "review_score":   "",
+            "jaren_garantie": "",
+            "usp":            "",
+            "usp_fallback":   "",
+        }
 
 st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
@@ -339,23 +372,24 @@ _variants_bytes = variants_file.getvalue() if variants_file else _default_varian
 
 # ── Adviesbestanden ───────────────────────────────────────────────────────────
 
-st.header("3. Adviesbestanden (optioneel)")
-st.caption(
-    "Upload het CPC-adviesbestand en/of het pauzeringsbestand. "
-    "De bestanden worden herkend op inhoud, niet op bestandsnaam."
-)
-
-col_cpc, col_pause = st.columns(2)
-
-with col_cpc:
-    cpc_file = st.file_uploader(
-        "CPC-adviesbestand (.xlsx)", type="xlsx", key="cpc_file"
+if _toon_adviesbestanden:
+    st.header("3. Adviesbestanden (optioneel)")
+    st.caption(
+        "Upload het CPC-adviesbestand en/of het pauzeringsbestand. "
+        "De bestanden worden herkend op inhoud, niet op bestandsnaam."
     )
-
-with col_pause:
-    pause_file = st.file_uploader(
-        "Pauzeringen-/beëindigingenbestand (.xlsx)", type="xlsx", key="pause_file"
-    )
+    col_cpc, col_pause = st.columns(2)
+    with col_cpc:
+        cpc_file = st.file_uploader(
+            "CPC-adviesbestand (.xlsx)", type="xlsx", key="cpc_file"
+        )
+    with col_pause:
+        pause_file = st.file_uploader(
+            "Pauzeringen-/beëindigingenbestand (.xlsx)", type="xlsx", key="pause_file"
+        )
+else:
+    cpc_file   = None
+    pause_file = None
 
 
 def _show_file_detection_error(file_name: str, file_type: AdviceFileType, wb_data: dict):
@@ -593,22 +627,25 @@ ad_schedule_override = st.text_area(
 
 # ── Fallback CPC ─────────────────────────────────────────────────────────────
 
-st.header("6b. Fallback CPC (optioneel)")
-st.caption("Wordt gebruikt wanneer een stad/klant geen CPC-regel heeft in het adviesbestand.")
-_fb_col1, _fb_col2 = st.columns(2)
-with _fb_col1:
-    _fb_stad_str   = st.text_input("Fallback +Stad CPC (€)", value="6.52", key="fb_stad")
-with _fb_col2:
-    _fb_lokaal_str = st.text_input("Fallback Lokaal CPC (€)", value="5.02", key="fb_lokaal")
-
 def _parse_cpc_euro(s: str) -> int | None:
     try:
         return round(float(s.replace(",", ".")) * 100)
     except (ValueError, AttributeError):
         return None
 
-_fallback_stad_cents   = _parse_cpc_euro(_fb_stad_str)
-_fallback_lokaal_cents = _parse_cpc_euro(_fb_lokaal_str)
+if _toon_fallback_cpc:
+    st.header("6b. Fallback CPC (optioneel)")
+    st.caption("Wordt gebruikt wanneer een stad/klant geen CPC-regel heeft in het adviesbestand.")
+    _fb_col1, _fb_col2 = st.columns(2)
+    with _fb_col1:
+        _fb_stad_str   = st.text_input("Fallback +Stad CPC (€)", value="6.52", key="fb_stad")
+    with _fb_col2:
+        _fb_lokaal_str = st.text_input("Fallback Lokaal CPC (€)", value="5.02", key="fb_lokaal")
+    _fallback_stad_cents   = _parse_cpc_euro(_fb_stad_str)
+    _fallback_lokaal_cents = _parse_cpc_euro(_fb_lokaal_str)
+else:
+    _fallback_stad_cents   = None
+    _fallback_lokaal_cents = None
 
 # ── Dry-run toggle ────────────────────────────────────────────────────────────
 
