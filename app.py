@@ -67,6 +67,18 @@ with _col_edit:
 
 _branch_cfg = _branches.get(selected_branch, {}).get(selected_merk, {})
 
+# CPC-positie toggle: toon alleen als er laagste-paden zijn geconfigureerd
+_heeft_laagste = bool(
+    _branch_cfg.get("lokaal_laagste_path") or _branch_cfg.get("stad_laagste_path")
+)
+if _heeft_laagste:
+    _cpc_positie = st.radio(
+        "CPC positie", ["Hoogste CPC", "Laagste CPC"],
+        horizontal=True, key="cpc_positie",
+    )
+else:
+    _cpc_positie = "Hoogste CPC"
+
 if show_branch_config:
     with st.expander(f"Standaardwaarden voor {selected_branch} — {selected_merk}", expanded=True):
         bc_sheet_url  = st.text_input("Standaard sheet URL",   value=_branch_cfg.get("sheet_url", ""),         key="bc_sheet_url")
@@ -84,18 +96,30 @@ if show_branch_config:
                 _f.write(upload.getvalue())
             return dest
 
+        st.markdown("*Hoogste CPC sjablonen:*")
         bc_col1, bc_col2 = st.columns(2)
         with bc_col1:
-            bc_up_lokaal   = st.file_uploader("Lokaal sjabloon (.csv)",     type="csv",  key="bc_up_lokaal")
-            bc_up_variants = st.file_uploader("Variantenbestand (.xlsx)",   type="xlsx", key="bc_up_variants")
+            bc_up_lokaal   = st.file_uploader("Lokaal hoogste CPC (.csv)",   type="csv",  key="bc_up_lokaal")
+            bc_up_variants = st.file_uploader("Variantenbestand (.xlsx)",     type="xlsx", key="bc_up_variants")
         with bc_col2:
-            bc_up_stad     = st.file_uploader("Stad sjabloon (.csv)",       type="csv",  key="bc_up_stad")
-            bc_up_cpc      = st.file_uploader("CPC-adviesbestand (.xlsx)",  type="xlsx", key="bc_up_cpc")
+            bc_up_stad     = st.file_uploader("Stad hoogste CPC (.csv)",      type="csv",  key="bc_up_stad")
+            bc_up_cpc      = st.file_uploader("CPC-adviesbestand (.xlsx)",    type="xlsx", key="bc_up_cpc")
+
+        st.markdown("*Laagste CPC sjablonen (optioneel):*")
+        bc_col3, bc_col4 = st.columns(2)
+        with bc_col3:
+            bc_up_lokaal_laagste = st.file_uploader("Lokaal laagste CPC (.csv)", type="csv", key="bc_up_lokaal_laagste")
+        with bc_col4:
+            bc_up_stad_laagste   = st.file_uploader("Stad laagste CPC (.csv)",   type="csv", key="bc_up_stad_laagste")
+
         bc_up_pause = st.file_uploader("Pauzeringsbestand (.xlsx)", type="xlsx", key="bc_up_pause")
 
         # Huidige paden tonen
-        for _lbl, _key in [("Lokaal", "lokaal_template_path"), ("Stad", "stad_template_path"),
-                            ("Varianten", "variants_path"), ("CPC", "cpc_file_path"), ("Pauze", "pause_file_path")]:
+        for _lbl, _key in [
+            ("Lokaal (hoogste)", "lokaal_template_path"), ("Stad (hoogste)", "stad_template_path"),
+            ("Lokaal (laagste)", "lokaal_laagste_path"),  ("Stad (laagste)", "stad_laagste_path"),
+            ("Varianten", "variants_path"), ("CPC", "cpc_file_path"), ("Pauze", "pause_file_path"),
+        ]:
             _p = _branch_cfg.get(_key, "")
             if _p:
                 _ok = "✓" if os.path.isfile(_p) else "✗ niet gevonden"
@@ -103,13 +127,15 @@ if show_branch_config:
 
         if st.button("💾 Sla bestanden op als standaard", key="save_branch_cfg"):
             _new_cfg = {
-                "sheet_url":            bc_sheet_url.strip(),
-                "sheet_name":           bc_sheet_name.strip(),
-                "lokaal_template_path": _save_branch_file(bc_up_lokaal,   "lokaal",   ".csv")  or _branch_cfg.get("lokaal_template_path", ""),
-                "stad_template_path":   _save_branch_file(bc_up_stad,     "stad",     ".csv")  or _branch_cfg.get("stad_template_path", ""),
-                "variants_path":        _save_branch_file(bc_up_variants,  "variants", ".xlsx") or _branch_cfg.get("variants_path", ""),
-                "cpc_file_path":        _save_branch_file(bc_up_cpc,      "cpc",      ".xlsx") or _branch_cfg.get("cpc_file_path", ""),
-                "pause_file_path":      _save_branch_file(bc_up_pause,    "pause",    ".xlsx") or _branch_cfg.get("pause_file_path", ""),
+                "sheet_url":             bc_sheet_url.strip(),
+                "sheet_name":            bc_sheet_name.strip(),
+                "lokaal_template_path":  _save_branch_file(bc_up_lokaal,         "lokaal",         ".csv")  or _branch_cfg.get("lokaal_template_path", ""),
+                "stad_template_path":    _save_branch_file(bc_up_stad,           "stad",           ".csv")  or _branch_cfg.get("stad_template_path", ""),
+                "lokaal_laagste_path":   _save_branch_file(bc_up_lokaal_laagste, "lokaal_laagste", ".csv")  or _branch_cfg.get("lokaal_laagste_path", ""),
+                "stad_laagste_path":     _save_branch_file(bc_up_stad_laagste,   "stad_laagste",   ".csv")  or _branch_cfg.get("stad_laagste_path", ""),
+                "variants_path":         _save_branch_file(bc_up_variants,       "variants",       ".xlsx") or _branch_cfg.get("variants_path", ""),
+                "cpc_file_path":         _save_branch_file(bc_up_cpc,            "cpc",            ".xlsx") or _branch_cfg.get("cpc_file_path", ""),
+                "pause_file_path":       _save_branch_file(bc_up_pause,          "pause",          ".xlsx") or _branch_cfg.get("pause_file_path", ""),
             }
             if selected_branch not in _branches:
                 _branches[selected_branch] = {}
@@ -268,8 +294,19 @@ st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
 
 # Auto-laden vanuit branch-configuratie als pad bestaat
-_default_lokaal_bytes = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
-_default_stad_bytes   = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
+# Bij "Laagste CPC" gebruik de laagste-paden als die bestaan, anders val terug op hoogste
+if _cpc_positie == "Laagste CPC":
+    _default_lokaal_bytes = (
+        _load_file_bytes(_branch_cfg.get("lokaal_laagste_path", ""))
+        or _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
+    )
+    _default_stad_bytes = (
+        _load_file_bytes(_branch_cfg.get("stad_laagste_path", ""))
+        or _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
+    )
+else:
+    _default_lokaal_bytes = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
+    _default_stad_bytes   = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
 
 with col1:
     lokaal_file = st.file_uploader(
@@ -277,14 +314,16 @@ with col1:
         help="dak_lokaal.csv of eigen merk lokaal sjabloon"
     )
     if not lokaal_file and _default_lokaal_bytes:
-        st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_branch_cfg.get('lokaal_template_path', ''))}**")
+        _lp = (_branch_cfg.get("lokaal_laagste_path") if _cpc_positie == "Laagste CPC" else None) or _branch_cfg.get("lokaal_template_path", "")
+        st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_lp)}**")
 with col2:
     stad_file = st.file_uploader(
         "+ Stad sjabloon (.csv)", type="csv", key="stad",
         help="dak + stad.csv of eigen merk stad sjabloon"
     )
     if not stad_file and _default_stad_bytes:
-        st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_branch_cfg.get('stad_template_path', ''))}**")
+        _sp = (_branch_cfg.get("stad_laagste_path") if _cpc_positie == "Laagste CPC" else None) or _branch_cfg.get("stad_template_path", "")
+        st.success(f"✓ Geladen uit branche-standaard: **{os.path.basename(_sp)}**")
 
 # Gebruik geüpload bestand of standaard uit branch-config
 _lokaal_bytes = lokaal_file.getvalue() if lokaal_file else _default_lokaal_bytes
