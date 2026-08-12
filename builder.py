@@ -565,7 +565,9 @@ def process_city(
         url_mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
         if _explicit:
             # Nieuw formaat: [url]?kw=[Plaats]&tel=[Nummer]
-            _base_url = url.rstrip("/") if url else ""
+            # Verwijder query-string en fragment zodat [url]?kw=... niet dubbel wordt
+            _p = urlparse(url)
+            _base_url = f"{_p.scheme}://{_p.netloc}{_p.path}".rstrip("/") if url else ""
             if url_mask.any():
                 df.loc[url_mask, "Final URL"] = df.loc[url_mask, "Final URL"].astype(str).apply(
                     lambda v, _b=_base_url, _c=city, _ph=phone:
