@@ -542,11 +542,10 @@ def process_city(
         # Voor eigen merk: vervang plaatsnaam en telefoon in URL altijd (ook zonder client-URL)
         if merk_info and mask.any():
             df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                lambda v: _case_replace(v, _tc, city)
+                lambda v, _t=_tc, _c=city: _case_replace(v, _t, _c)
             )
-            _ph = phone
             df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                lambda v: re.sub(r"(?<=tel=)[^&]+", _ph, v)
+                lambda v, _ph=phone: re.sub(r"(?<=tel=)[^&]+", _ph, v)
             )
 
         # Campaign Status → Paused
@@ -559,14 +558,16 @@ def process_city(
                 continue
             if variants:
                 df[col] = df[col].apply(
-                    lambda v, _col=col: _apply_variant(v, city, variants, merk_info, col=_col)
-                    if (pd.notna(v) and str(v).strip()) else v
+                    lambda v, _col=col, _c=city, _v=variants, _m=merk_info:
+                        _apply_variant(v, _c, _v, _m, col=_col)
+                        if (pd.notna(v) and str(v).strip()) else v
                 )
             elif merk_info:
                 df[col] = df[col].apply(
-                    lambda v, _col=col: _apply_eigen_placeholders(
-                        _case_replace(str(v), _tc, city), merk_info, city, col=_col, tmpl_company=_tco
-                    ) if (pd.notna(v) and str(v).strip()) else v
+                    lambda v, _col=col, _t=_tc, _c=city, _m=merk_info, _tco=_tco:
+                        _apply_eigen_placeholders(
+                            _case_replace(str(v), _t, _c), _m, _c, col=_col, tmpl_company=_tco
+                        ) if (pd.notna(v) and str(v).strip()) else v
                 )
             else:
                 df[col] = _replace_in_col(df[col], _tc, city)
@@ -581,15 +582,12 @@ def process_city(
                     limit = _COL_CHAR_LIMITS.get(col)
                     if not limit or col not in df.columns:
                         continue
-                    def _trim(v, _k=_korte, _l=_lange, _lim=limit):
-                        if not pd.notna(v) or not str(v).strip():
-                            return v
-                        s = str(v)
-                        if len(s) <= _lim or _l not in s:
-                            return s
-                        shorter = s.replace(_l, _k)
-                        return shorter if len(shorter) <= _lim else s
-                    df[col] = df[col].apply(_trim)
+                    df[col] = df[col].apply(
+                        lambda v, _k=_korte, _l=_lange, _lim=limit:
+                            (lambda s: s.replace(_l, _k) if len(s.replace(_l, _k)) <= _lim else s)(str(v))
+                            if (pd.notna(v) and str(v).strip() and len(str(v)) > _lim and _l in str(v))
+                            else v
+                    )
 
         # vervang USP-placeholder (case-insensitief, ook in lange varianten)
         if merk_info:
@@ -598,12 +596,13 @@ def process_city(
             usp_val = usp or usp_fallback
             if usp_val:
                 _usp_pattern = re.compile(re.escape(TEMPLATE_USP), re.IGNORECASE)
+                _usp_lower   = TEMPLATE_USP.lower()
                 for col in AD_TEXT_COLS:
                     if col in df.columns:
                         df[col] = df[col].apply(
-                            lambda v, pat=_usp_pattern, rep=usp_val:
+                            lambda v, pat=_usp_pattern, rep=usp_val, low=_usp_lower:
                                 pat.sub(rep, str(v))
-                                if pd.notna(v) and TEMPLATE_USP.lower() in str(v).lower()
+                                if pd.notna(v) and low in str(v).lower()
                                 else v
                         )
 
