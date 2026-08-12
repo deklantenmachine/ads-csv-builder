@@ -328,6 +328,32 @@ if eigen_merk:
             "usp_fallback":   "",
         }
 
+with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
+    import tempfile as _tf, io as _io
+    from builder import load_variants as _lv, _uses_explicit_placeholders as _uep, _apply_variant as _av, _apply_explicit_text as _aet
+    _dbg_lok = _load_file_bytes(_branch_cfg.get("lokaal_template_path", ""))
+    _dbg_sta = _load_file_bytes(_branch_cfg.get("stad_template_path", ""))
+    _dbg_var = _load_file_bytes(_branch_cfg.get("variants_path", ""))
+    st.write(f"**Lokaal sjabloon:** {'✓ geladen' if _dbg_lok else '✗ niet gevonden'} ({len(_dbg_lok) if _dbg_lok else 0} bytes)")
+    st.write(f"**Stad sjabloon:** {'✓ geladen' if _dbg_sta else '✗ niet gevonden'} ({len(_dbg_sta) if _dbg_sta else 0} bytes)")
+    st.write(f"**Varianten:** {'✓ geladen' if _dbg_var else '✗ niet gevonden'} ({len(_dbg_var) if _dbg_var else 0} bytes)")
+    if _dbg_sta:
+        import pandas as _pd
+        _df_sta = _pd.read_csv(_io.BytesIO(_dbg_sta), sep=";", encoding="utf-8-sig", low_memory=False)
+        st.write(f"**Explicit placeholders in stad-sjabloon:** {_uep(_df_sta)}")
+    if _dbg_var:
+        with _tf.NamedTemporaryFile(suffix=".xlsx", delete=False) as _f:
+            _f.write(_dbg_var); _vpath = _f.name
+        _vars = _lv(_vpath)
+        st.write(f"**Aantal varianten geladen:** {len(_vars)}")
+        _test_keys = [k for k in _vars if "bedrijfsnaam" in k and "in" in k]
+        st.write(f"**Relevante keys:** {_test_keys}")
+        if eigen_merk and merk_info and merk_info.get("korte_naam"):
+            for _city in ["Alblasserdam", "Capelle aan den IJssel"]:
+                _res = _av("[Klantnaam] In [Plaats]", _city, _vars, merk_info, col="Headline 2")
+                _res2 = _aet(_res, _city, merk_info, None, col="Headline 2")
+                st.write(f"[Klantnaam] In [Plaats] + {_city} → **{_res2}**")
+
 st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
 
