@@ -13,7 +13,7 @@
         "stad_template_path": "branch_files/Schoorsteenveger/Eigen merk/NL/stad_hoogste.csv",
         "lokaal_laagste_path": "branch_files/Schoorsteenveger/Eigen merk/NL/lokaal_laagste.csv",
         "stad_laagste_path": "branch_files/Schoorsteenveger/Eigen merk/NL/stad_laagste.csv",
-        "variants_path": "",
+        "variants_path": "branch_files/Schoorsteenveger/Eigen merk/NL/variants.xlsx",
         "cpc_file_path": "",
         "pause_file_path": "",
         "template_city": "",

@@ -1,7 +1,8 @@
 __pycache__/
 *.py[cod]
 .env
-# Advies/CPC/pauze bestanden (klantdata) wel uitsluiten
-branch_files/**/*.xlsx
+# Advies/CPC/pauze bestanden (klantdata) uitsluiten, maar variants.xlsx meenemen
+branch_files/**/cpc.xlsx
+branch_files/**/pause.xlsx
 # Gegenereerde output-CSV's uitsluiten (maar branch_files CSV's wel meenemen)
 !branch_files/**/*.csv
