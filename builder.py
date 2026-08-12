@@ -520,6 +520,8 @@ def process_city(
                 template_phone = phones.iloc[0]
         if phone and phone != template_phone:
             df["Phone Number"] = _replace_exact(df["Phone Number"], template_phone, phone)
+            if "Phone Number#Original" in df.columns:
+                df["Phone Number#Original"] = _replace_exact(df["Phone Number#Original"], template_phone, phone)
 
         # Final URL
         mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
@@ -547,6 +549,30 @@ def process_city(
             df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
                 lambda v, _ph=phone: re.sub(r"(?<=tel=)[^&]+", _ph, v)
             )
+
+        # Final URL#Original: zelfde vervanging als Final URL
+        if "Final URL#Original" in df.columns:
+            _url_orig_col = "Final URL#Original"
+            mask_o = df[_url_orig_col].notna() & (df[_url_orig_col].astype(str).str.strip() != "")
+            if url and merk_info and mask_o.any():
+                _fo_urls = df.loc[mask_o, _url_orig_col].astype(str)
+                _fo_domain = TEMPLATE_DOMAIN
+                if len(_fo_urls):
+                    _det = urlparse(_fo_urls.iloc[0]).netloc
+                    if _det:
+                        _fo_domain = _det
+                df.loc[mask_o, _url_orig_col] = df.loc[mask_o, _url_orig_col].astype(str).str.replace(
+                    _fo_domain, client_domain, regex=False
+                )
+            elif url and not merk_info and mask_o.any():
+                df.loc[mask_o, _url_orig_col] = url
+            if merk_info and mask_o.any():
+                df.loc[mask_o, _url_orig_col] = df.loc[mask_o, _url_orig_col].astype(str).apply(
+                    lambda v, _t=_tc, _c=city: _case_replace(v, _t, _c)
+                )
+                df.loc[mask_o, _url_orig_col] = df.loc[mask_o, _url_orig_col].astype(str).apply(
+                    lambda v, _ph=phone: re.sub(r"(?<=tel=)[^&]+", _ph, v)
+                )
 
         # Campaign Status → Paused
         mask = df["Campaign Status"].notna() & (df["Campaign Status"].astype(str).str.strip() != "")
@@ -617,6 +643,12 @@ def process_city(
                         if pd.notna(v) and _pt in str(v)
                         else v
                 )
+
+        # Kopieer verwerkte advertentieteksten naar #Original kolommen
+        for col in AD_TEXT_COLS:
+            orig = col + "#Original"
+            if col in df.columns and orig in df.columns:
+                df[orig] = df[col]
 
     # Labels: zorg dat Netnummer {net} aanwezig is op alle niveaus
     lok = _ensure_netnummer_label(lok, net)
