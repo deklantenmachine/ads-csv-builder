@@ -310,16 +310,14 @@ if eigen_merk:
             "usp_fallback":   "100% Tevreden? Dan Wij Ook",
         }
     else:
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
-            korte_naam = st.text_input("Korte bedrijfsnaam", placeholder="VB")
+            klantnaam = st.text_input("Klantnaam", placeholder="Schoorsteenvegers De Spil")
         with col2:
-            lange_naam = st.text_input("Lange bedrijfsnaam", placeholder="Van Beynen Schoorsteenvegers")
-        with col3:
             klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
         merk_info = {
-            "korte_naam":     korte_naam.strip(),
-            "lange_naam":     lange_naam.strip(),
+            "korte_naam":     klantnaam.strip(),
+            "lange_naam":     klantnaam.strip(),
             "review_score":   "",
             "jaren_garantie": "",
             "usp":            "",
