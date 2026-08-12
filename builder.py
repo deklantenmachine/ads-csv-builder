@@ -330,7 +330,14 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
         if r == "city":
             threshold    = rule.get("threshold", 999)
             name_max_len = rule.get("name_max_len")
-            if len(city) >= threshold:
+            # Check ook of de volledige tekst na invullen de kolomlimiet overschrijdt
+            _korte_est = merk_info.get("korte_naam", "") if merk_info else ""
+            _estimated = (s
+                .replace("[Klantnaam]", _korte_est)
+                .replace("[Plaats]", city)
+                .replace(TEMPLATE_CITY, city))
+            _result_too_long = col_limit is not None and len(_estimated) > col_limit
+            if len(city) >= threshold or _result_too_long:
                 if not lange_raw:
                     return ""
                 # Geketende drempel: volg de keten zolang:
