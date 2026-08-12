@@ -52,6 +52,29 @@ def _save_branch_advice_file(branch_name: str, kind: str, file_bytes: bytes, ori
     return dest
 
 st.set_page_config(page_title="Ads CSV Builder", page_icon="📦", layout="centered")
+
+# ── Authenticatie ─────────────────────────────────────────────────────────────
+def _check_auth() -> bool:
+    try:
+        correct = st.secrets["password"]
+    except Exception:
+        return True  # geen secret ingesteld → lokaal gebruik, altijd toestaan
+
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("📦 Ads CSV Builder")
+    pwd = st.text_input("Wachtwoord", type="password", key="pwd_input")
+    if st.button("Inloggen"):
+        if pwd == correct:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Onjuist wachtwoord.")
+    st.stop()
+
+_check_auth()
+
 st.title("📦 Google Ads CSV Builder")
 
 # ── Branch selector ────────────────────────────────────────────────────────────
