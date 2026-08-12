@@ -29,7 +29,11 @@ def _save_branches(data: dict):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 def _load_file_bytes(path: str) -> bytes | None:
-    if path and os.path.isfile(path):
+    if not path:
+        return None
+    if not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(__file__), path)
+    if os.path.isfile(path):
         with open(path, "rb") as f:
             return f.read()
     return None

@@ -9,10 +9,10 @@
       "NL": {
         "sheet_url": "",
         "sheet_name": "Testtab",
-        "lokaal_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\lokaal_hoogste.csv",
-        "stad_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\stad_hoogste.csv",
-        "lokaal_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\lokaal_laagste.csv",
-        "stad_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Eigen merk\\NL\\stad_laagste.csv",
+        "lokaal_template_path": "branch_files/Schoorsteenveger/Eigen merk/NL/lokaal_hoogste.csv",
+        "stad_template_path": "branch_files/Schoorsteenveger/Eigen merk/NL/stad_hoogste.csv",
+        "lokaal_laagste_path": "branch_files/Schoorsteenveger/Eigen merk/NL/lokaal_laagste.csv",
+        "stad_laagste_path": "branch_files/Schoorsteenveger/Eigen merk/NL/stad_laagste.csv",
         "variants_path": "",
         "cpc_file_path": "",
         "pause_file_path": "",
@@ -24,10 +24,10 @@
       "NL": {
         "sheet_url": "",
         "sheet_name": "Testtab",
-        "lokaal_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\lokaal_hoogste.csv",
-        "stad_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\stad_hoogste.csv",
-        "lokaal_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\lokaal_laagste.csv",
-        "stad_laagste_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Schoorsteenveger\\Overkoepelend merk (portaal)\\NL\\stad_laagste.csv",
+        "lokaal_template_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/NL/lokaal_hoogste.csv",
+        "stad_template_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/NL/stad_hoogste.csv",
+        "lokaal_laagste_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/NL/lokaal_laagste.csv",
+        "stad_laagste_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/NL/stad_laagste.csv",
         "variants_path": "",
         "cpc_file_path": "",
         "pause_file_path": "",
@@ -40,11 +40,11 @@
     "Eigen merk": {
       "sheet_url": "https://docs.google.com/spreadsheets/d/11FbSGdbA96v60j2JIih5w46X_3fX4tDboBPQ2VMtduE/edit?usp=sharing",
       "sheet_name": "Testtab",
-      "lokaal_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\lokaal.csv",
-      "stad_template_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\stad.csv",
-      "variants_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\variants.xlsx",
-      "cpc_file_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\cpc.xlsx",
-      "pause_file_path": "C:\\Users\\menno\\ads_builder\\branch_files\\Dakdekker\\Eigen merk\\pause.xlsx"
+      "lokaal_template_path": "branch_files/Dakdekker/Eigen merk/lokaal.csv",
+      "stad_template_path": "branch_files/Dakdekker/Eigen merk/stad.csv",
+      "variants_path": "branch_files/Dakdekker/Eigen merk/variants.xlsx",
+      "cpc_file_path": "branch_files/Dakdekker/Eigen merk/cpc.xlsx",
+      "pause_file_path": "branch_files/Dakdekker/Eigen merk/pause.xlsx"
     },
     "Overkoepelend merk (portaal)": {
       "sheet_url": "",
