@@ -519,26 +519,32 @@ def process_city(
             df["Phone Number"] = _replace_exact(df["Phone Number"], template_phone, phone)
 
         # Final URL
+        mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
         if url:
             if merk_info:
                 # eigen merk: vervang alleen het domein, behoud pad en query
                 client_domain = urlparse(url).netloc or url.replace("https://", "").replace("http://", "").rstrip("/")
-                mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
+                # auto-detecteer sjabloondomein vanuit eerste gevulde Final URL
+                _first_urls = df.loc[mask, "Final URL"].astype(str)
+                _tmpl_domain = TEMPLATE_DOMAIN
+                if len(_first_urls):
+                    _det = urlparse(_first_urls.iloc[0]).netloc
+                    if _det:
+                        _tmpl_domain = _det
                 df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).str.replace(
-                    TEMPLATE_DOMAIN, client_domain, regex=False
-                )
-                # vervang ook kw=Nijmegen/Groningen in URL
-                df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                    lambda v: _case_replace(v, _tc, city)
-                )
-                # vervang tel= parameter in URL (ongeacht welk nummer in sjabloon staat)
-                _ph = phone  # capture voor lambda
-                df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                    lambda v: re.sub(r"(?<=tel=)[^&]+", _ph, v)
+                    _tmpl_domain, client_domain, regex=False
                 )
             else:
-                mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
                 df.loc[mask, "Final URL"] = url
+        # Voor eigen merk: vervang plaatsnaam en telefoon in URL altijd (ook zonder client-URL)
+        if merk_info and mask.any():
+            df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
+                lambda v: _case_replace(v, _tc, city)
+            )
+            _ph = phone
+            df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
+                lambda v: re.sub(r"(?<=tel=)[^&]+", _ph, v)
+            )
 
         # Campaign Status → Paused
         mask = df["Campaign Status"].notna() & (df["Campaign Status"].astype(str).str.strip() != "")
@@ -615,8 +621,13 @@ def process_city(
             if pd.notna(v) else v
         )
 
-    # Lokaal specifiek
+    # Campaign namen (stad + lokaal): vervang plaatsnaam en bedrijfsnaam
+    sta["Campaign"] = _replace_in_col(sta["Campaign"], _tc, city)
     lok["Campaign"] = _replace_in_col(lok["Campaign"], _tc, city)
+    if merk_info:
+        _repl_camp = lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco) if pd.notna(v) else v  # noqa: E731
+        sta["Campaign"] = sta["Campaign"].apply(_repl_camp)
+        lok["Campaign"] = lok["Campaign"].apply(_repl_camp)
 
     # Lokale campagne overslaan als locatiedata ontbreekt
     if skip_lokaal:
