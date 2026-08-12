@@ -104,6 +104,36 @@ def _replace_in_col(series: pd.Series, old: str, new: str) -> pd.Series:
     return series.apply(_safe)
 
 
+def _uses_explicit_placeholders(df: pd.DataFrame) -> bool:
+    """Detecteer of het sjabloon expliciete placeholders gebruikt zoals [Plaats], [Klantnaam]."""
+    for col in ["Final URL", "Campaign", "Headline 1", "Ad Group", "Keyword"]:
+        if col in df.columns:
+            vals = df[col].dropna().astype(str)
+            if vals.str.contains(r"\[Plaats\]", regex=True).any():
+                return True
+    return False
+
+
+def _apply_explicit_text(val, city: str, merk_info: dict | None, price: str | None, col: str = "") -> str:
+    """Vervang expliciete placeholders [Plaats], [Klantnaam], [Prijs] in één cel."""
+    if pd.isna(val) or not str(val).strip():
+        return val
+    s = str(val)
+    s = s.replace("[Plaats]", city)
+    if merk_info and "[Klantnaam]" in s:
+        korte = merk_info.get("korte_naam", "")
+        lange = merk_info.get("lange_naam", "") or korte
+        limit = _COL_CHAR_LIMITS.get(col)
+        if limit:
+            bedrijfsnaam = korte if len(s.replace("[Klantnaam]", lange)) > limit else lange
+        else:
+            bedrijfsnaam = lange
+        s = s.replace("[Klantnaam]", bedrijfsnaam)
+    if price:
+        s = re.sub(r"\[Prijs\]", price, s, flags=re.IGNORECASE)
+    return s
+
+
 def _replace_exact(series: pd.Series, old: str, new: str) -> pd.Series:
     def _safe(val):
         if pd.isna(val) or str(val).strip() == "":
@@ -494,9 +524,10 @@ def process_city(
     targeting_locs = _parse_locations(targeting_raw_val) if not skip_lokaal else []
     negative_locs  = _parse_locations(str(row.get("Negatieve locaties", "")))
 
-    today = _today_str()
-    lok   = df_lokaal.copy()
-    sta   = df_stad.copy()
+    today    = _today_str()
+    lok      = df_lokaal.copy()
+    sta      = df_stad.copy()
+    _explicit = _uses_explicit_placeholders(lok) or _uses_explicit_placeholders(sta)
 
     for df in (lok, sta):
         # Start/End Date
@@ -511,68 +542,85 @@ def process_city(
             df.loc[mask, "Ad Schedule"] = ad_schedule
 
         # Phone Number
-        template_phone = TEMPLATE_PHONE
-        if merk_info:
-            # detecteer template-telefoonnummer uit eerste gevulde cel
-            phones = df["Phone Number"].dropna().astype(str)
-            phones = phones[phones.str.strip() != ""]
-            if len(phones):
-                template_phone = phones.iloc[0]
-        if phone and phone != template_phone:
-            df["Phone Number"] = _replace_exact(df["Phone Number"], template_phone, phone)
-            if "Phone Number#Original" in df.columns:
-                df["Phone Number#Original"] = _replace_exact(df["Phone Number#Original"], template_phone, phone)
+        if _explicit:
+            # Nieuw formaat: [Nummer] als placeholder
+            for _pn_col in ("Phone Number", "Phone Number#Original"):
+                if _pn_col in df.columns:
+                    df[_pn_col] = df[_pn_col].apply(
+                        lambda v, _ph=phone: str(v).replace("[Nummer]", _ph) if pd.notna(v) else v
+                    )
+        else:
+            template_phone = TEMPLATE_PHONE
+            if merk_info:
+                phones = df["Phone Number"].dropna().astype(str)
+                phones = phones[phones.str.strip() != ""]
+                if len(phones):
+                    template_phone = phones.iloc[0]
+            if phone and phone != template_phone:
+                df["Phone Number"] = _replace_exact(df["Phone Number"], template_phone, phone)
+                if "Phone Number#Original" in df.columns:
+                    df["Phone Number#Original"] = _replace_exact(df["Phone Number#Original"], template_phone, phone)
 
         # Final URL
-        mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
-        if url:
-            if merk_info:
-                # eigen merk: vervang alleen het domein, behoud pad en query
-                client_domain = urlparse(url).netloc or url.replace("https://", "").replace("http://", "").rstrip("/")
-                # auto-detecteer sjabloondomein vanuit eerste gevulde Final URL
-                _first_urls = df.loc[mask, "Final URL"].astype(str)
-                _tmpl_domain = TEMPLATE_DOMAIN
-                if len(_first_urls):
-                    _det = urlparse(_first_urls.iloc[0]).netloc
-                    if _det:
-                        _tmpl_domain = _det
-                df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).str.replace(
-                    _tmpl_domain, client_domain, regex=False
+        url_mask = df["Final URL"].notna() & (df["Final URL"].astype(str).str.strip() != "")
+        if _explicit:
+            # Nieuw formaat: [url]?kw=[Plaats]&tel=[Nummer]
+            _base_url = url.rstrip("/") if url else ""
+            if url_mask.any():
+                df.loc[url_mask, "Final URL"] = df.loc[url_mask, "Final URL"].astype(str).apply(
+                    lambda v, _b=_base_url, _c=city, _ph=phone:
+                        v.replace("[url]", _b).replace("[Plaats]", _c).replace("[Nummer]", _ph)
                 )
-            else:
-                df.loc[mask, "Final URL"] = url
-        # Voor eigen merk: vervang plaatsnaam en telefoon in URL altijd (ook zonder client-URL)
-        if merk_info and mask.any():
-            df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                lambda v, _t=_tc, _c=city: _case_replace(v, _t, _c)
-            )
-            df.loc[mask, "Final URL"] = df.loc[mask, "Final URL"].astype(str).apply(
-                lambda v, _ph=phone: re.sub(r"(?<=tel=)[^&]+", _ph, v)
-            )
-
-        # Final URL#Original: zelfde vervanging als Final URL
-        if "Final URL#Original" in df.columns:
-            _url_orig_col = "Final URL#Original"
-            mask_o = df[_url_orig_col].notna() & (df[_url_orig_col].astype(str).str.strip() != "")
-            if url and merk_info and mask_o.any():
-                _fo_urls = df.loc[mask_o, _url_orig_col].astype(str)
-                _fo_domain = TEMPLATE_DOMAIN
-                if len(_fo_urls):
-                    _det = urlparse(_fo_urls.iloc[0]).netloc
-                    if _det:
-                        _fo_domain = _det
-                df.loc[mask_o, _url_orig_col] = df.loc[mask_o, _url_orig_col].astype(str).str.replace(
-                    _fo_domain, client_domain, regex=False
-                )
-            elif url and not merk_info and mask_o.any():
-                df.loc[mask_o, _url_orig_col] = url
-            if merk_info and mask_o.any():
-                df.loc[mask_o, _url_orig_col] = df.loc[mask_o, _url_orig_col].astype(str).apply(
+            if "Final URL#Original" in df.columns:
+                mask_o = df["Final URL#Original"].notna() & (df["Final URL#Original"].astype(str).str.strip() != "")
+                if mask_o.any():
+                    df.loc[mask_o, "Final URL#Original"] = df.loc[mask_o, "Final URL#Original"].astype(str).apply(
+                        lambda v, _b=_base_url, _c=city, _ph=phone:
+                            v.replace("[url]", _b).replace("[Plaats]", _c).replace("[Nummer]", _ph)
+                    )
+        else:
+            if url:
+                if merk_info:
+                    client_domain = urlparse(url).netloc or url.replace("https://", "").replace("http://", "").rstrip("/")
+                    _first_urls = df.loc[url_mask, "Final URL"].astype(str)
+                    _tmpl_domain = TEMPLATE_DOMAIN
+                    if len(_first_urls):
+                        _det = urlparse(_first_urls.iloc[0]).netloc
+                        if _det:
+                            _tmpl_domain = _det
+                    df.loc[url_mask, "Final URL"] = df.loc[url_mask, "Final URL"].astype(str).str.replace(
+                        _tmpl_domain, client_domain, regex=False
+                    )
+                else:
+                    df.loc[url_mask, "Final URL"] = url
+            if merk_info and url_mask.any():
+                df.loc[url_mask, "Final URL"] = df.loc[url_mask, "Final URL"].astype(str).apply(
                     lambda v, _t=_tc, _c=city: _case_replace(v, _t, _c)
                 )
-                df.loc[mask_o, _url_orig_col] = df.loc[mask_o, _url_orig_col].astype(str).apply(
+                df.loc[url_mask, "Final URL"] = df.loc[url_mask, "Final URL"].astype(str).apply(
                     lambda v, _ph=phone: re.sub(r"(?<=tel=)[^&]+", _ph, v)
                 )
+            if "Final URL#Original" in df.columns:
+                mask_o = df["Final URL#Original"].notna() & (df["Final URL#Original"].astype(str).str.strip() != "")
+                if url and merk_info and mask_o.any():
+                    _fo_urls = df.loc[mask_o, "Final URL#Original"].astype(str)
+                    _fo_domain = TEMPLATE_DOMAIN
+                    if len(_fo_urls):
+                        _det = urlparse(_fo_urls.iloc[0]).netloc
+                        if _det:
+                            _fo_domain = _det
+                    df.loc[mask_o, "Final URL#Original"] = df.loc[mask_o, "Final URL#Original"].astype(str).str.replace(
+                        _fo_domain, client_domain, regex=False
+                    )
+                elif url and not merk_info and mask_o.any():
+                    df.loc[mask_o, "Final URL#Original"] = url
+                if merk_info and mask_o.any():
+                    df.loc[mask_o, "Final URL#Original"] = df.loc[mask_o, "Final URL#Original"].astype(str).apply(
+                        lambda v, _t=_tc, _c=city: _case_replace(v, _t, _c)
+                    )
+                    df.loc[mask_o, "Final URL#Original"] = df.loc[mask_o, "Final URL#Original"].astype(str).apply(
+                        lambda v, _ph=phone: re.sub(r"(?<=tel=)[^&]+", _ph, v)
+                    )
 
         # Campaign Status → Paused
         mask = df["Campaign Status"].notna() & (df["Campaign Status"].astype(str).str.strip() != "")
@@ -582,7 +630,13 @@ def process_city(
         for col in AD_TEXT_COLS:
             if col not in df.columns:
                 continue
-            if variants:
+            if _explicit:
+                df[col] = df[col].apply(
+                    lambda v, _col=col, _c=city, _m=merk_info, _p=_tp:
+                        _apply_explicit_text(v, _c, _m, _p, col=_col)
+                        if (pd.notna(v) and str(v).strip()) else v
+                )
+            elif variants:
                 df[col] = df[col].apply(
                     lambda v, _col=col, _c=city, _v=variants, _m=merk_info:
                         _apply_variant(v, _c, _v, _m, col=_col)
@@ -598,9 +652,8 @@ def process_city(
             else:
                 df[col] = _replace_in_col(df[col], _tc, city)
 
-        # Tekenlimiet-vangnet: vervang lange naam door korte als kolom te lang is.
-        # Vangt gevallen op waarbij de naam al ingebakken is in de Excel-variant.
-        if merk_info:
+        # Tekenlimiet-vangnet (alleen oud formaat — nieuw formaat verwerkt dit al per cel)
+        if not _explicit and merk_info:
             _korte = merk_info.get("korte_naam", "")
             _lange = merk_info.get("lange_naam", "") or _korte
             if _lange and _lange != _korte:
@@ -615,8 +668,8 @@ def process_city(
                             else v
                     )
 
-        # vervang USP-placeholder (case-insensitief, ook in lange varianten)
-        if merk_info:
+        # USP-placeholder (alleen oud formaat — nieuw formaat heeft geen TEMPLATE_USP)
+        if not _explicit and merk_info:
             usp = merk_info.get("usp", "").strip()
             usp_fallback = merk_info.get("usp_fallback", "")
             usp_val = usp or usp_fallback
@@ -632,8 +685,8 @@ def process_city(
                                 else v
                         )
 
-        # Vervang prijsplaatshouder (bijv. "€59,50") door klantprijs
-        if _tp:
+        # Prijsplaatshouder oud formaat (bijv. "€59,50")
+        if not _explicit and _tp:
             for col in AD_TEXT_COLS:
                 if col not in df.columns:
                     continue
@@ -654,26 +707,40 @@ def process_city(
     lok = _ensure_netnummer_label(lok, net)
     sta = _ensure_netnummer_label(sta, net)
 
-    # + Stad specifiek
-    sta["Ad Group"] = _replace_in_col(sta["Ad Group"], _tc, city)
-    sta["Keyword"]  = _replace_in_col(sta["Keyword"],  _tc, city)
-    if merk_info:
+    # + Stad: Ad Group en Keyword
+    if _explicit:
         sta["Ad Group"] = sta["Ad Group"].apply(
-            lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco)
-            if pd.notna(v) else v
+            lambda v, _c=city, _m=merk_info: _apply_explicit_text(v, _c, _m, None) if pd.notna(v) else v
         )
         sta["Keyword"] = sta["Keyword"].apply(
-            lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco)
-            if pd.notna(v) else v
+            lambda v, _c=city: str(v).replace("[Plaats]", _c) if pd.notna(v) else v
         )
+    else:
+        sta["Ad Group"] = _replace_in_col(sta["Ad Group"], _tc, city)
+        sta["Keyword"]  = _replace_in_col(sta["Keyword"],  _tc, city)
+        if merk_info:
+            sta["Ad Group"] = sta["Ad Group"].apply(
+                lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco)
+                if pd.notna(v) else v
+            )
+            sta["Keyword"] = sta["Keyword"].apply(
+                lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco)
+                if pd.notna(v) else v
+            )
 
-    # Campaign namen (stad + lokaal): vervang plaatsnaam en bedrijfsnaam
-    sta["Campaign"] = _replace_in_col(sta["Campaign"], _tc, city)
-    lok["Campaign"] = _replace_in_col(lok["Campaign"], _tc, city)
-    if merk_info:
-        _repl_camp = lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco) if pd.notna(v) else v  # noqa: E731
-        sta["Campaign"] = sta["Campaign"].apply(_repl_camp)
-        lok["Campaign"] = lok["Campaign"].apply(_repl_camp)
+    # Campaign namen (stad + lokaal)
+    if _explicit:
+        for _df in (sta, lok):
+            _df["Campaign"] = _df["Campaign"].apply(
+                lambda v, _c=city, _m=merk_info: _apply_explicit_text(v, _c, _m, None) if pd.notna(v) else v
+            )
+    else:
+        sta["Campaign"] = _replace_in_col(sta["Campaign"], _tc, city)
+        lok["Campaign"] = _replace_in_col(lok["Campaign"], _tc, city)
+        if merk_info:
+            _repl_camp = lambda v: _apply_eigen_placeholders(str(v), merk_info, city, tmpl_company=_tco) if pd.notna(v) else v  # noqa: E731
+            sta["Campaign"] = sta["Campaign"].apply(_repl_camp)
+            lok["Campaign"] = lok["Campaign"].apply(_repl_camp)
 
     # Lokale campagne overslaan als locatiedata ontbreekt
     if skip_lokaal:
