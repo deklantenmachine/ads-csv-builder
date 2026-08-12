@@ -46,6 +46,19 @@
         "pause_file_path": "",
         "template_city": "Nijmegen",
         "template_company": "DSB"
+      },
+      "BE": {
+        "sheet_url": "",
+        "sheet_name": "Testtab",
+        "lokaal_template_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/BE/lokaal_hoogste.csv",
+        "stad_template_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/BE/stad_hoogste.csv",
+        "lokaal_laagste_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/BE/lokaal_laagste.csv",
+        "stad_laagste_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/BE/stad_laagste.csv",
+        "variants_path": "",
+        "cpc_file_path": "",
+        "pause_file_path": "",
+        "template_city": "",
+        "template_company": ""
       }
     }
   },
