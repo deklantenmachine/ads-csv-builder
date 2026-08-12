@@ -18,6 +18,19 @@
         "pause_file_path": "",
         "template_city": "",
         "template_company": ""
+      },
+      "BE": {
+        "sheet_url": "",
+        "sheet_name": "Testtab",
+        "lokaal_template_path": "branch_files/Schoorsteenveger/Eigen merk/BE/lokaal_hoogste.csv",
+        "stad_template_path": "branch_files/Schoorsteenveger/Eigen merk/BE/stad_hoogste.csv",
+        "lokaal_laagste_path": "branch_files/Schoorsteenveger/Eigen merk/BE/lokaal_laagste.csv",
+        "stad_laagste_path": "branch_files/Schoorsteenveger/Eigen merk/BE/stad_laagste.csv",
+        "variants_path": "branch_files/Schoorsteenveger/Eigen merk/BE/variants.xlsx",
+        "cpc_file_path": "",
+        "pause_file_path": "",
+        "template_city": "",
+        "template_company": ""
       }
     },
     "Overkoepelend merk (portaal)": {
