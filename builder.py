@@ -236,10 +236,12 @@ def load_variants(xlsx_path: str) -> dict:
         if not rule_info:
             continue
 
-        # normaliseer de lookup-sleutel
+        # normaliseer de lookup-sleutel (oud formaat: 'Plaats'/DCN, nieuw: [Plaats]/[Klantnaam])
         key = korte
-        key = re.sub(r"'?Plaats'?", TEMPLATE_CITY, key)       # plaatsnaam placeholder
-        key = key.replace(TEMPLATE_COMPANY, "[Bedrijfsnaam]")  # bedrijfsnaam placeholder
+        key = key.replace("[Plaats]", TEMPLATE_CITY)           # nieuw: [Plaats] → Groningen
+        key = re.sub(r"'?Plaats'?", TEMPLATE_CITY, key)        # oud: 'Plaats' → Groningen
+        key = key.replace("[Klantnaam]", "[Bedrijfsnaam]")     # nieuw: [Klantnaam] → [Bedrijfsnaam]
+        key = key.replace(TEMPLATE_COMPANY, "[Bedrijfsnaam]")  # oud: DCN → [Bedrijfsnaam]
         key = key.lower()
         # normaliseer portaal-specifieke waarden naar generieke placeholders
         key = key.replace(TEMPLATE_REVIEW_SCORE, _KEY_REVIEW)
@@ -268,13 +270,17 @@ def _resolve_name(
     if name_max_len and len(lange_naam) > name_max_len:
         effective_lange = korte_naam
     elif col_char_limit:
-        candidate = lange_raw.replace("'Lange bedrijfsnaam'", lange_naam).replace("[Lange bedrijfsnaam]", lange_naam)
+        candidate = (lange_raw
+            .replace("'Lange bedrijfsnaam'", lange_naam)
+            .replace("[Lange bedrijfsnaam]", lange_naam)
+            .replace("[Klantnaam]", lange_naam))
         effective_lange = korte_naam if len(candidate) > col_char_limit else lange_naam
     else:
         effective_lange = lange_naam
     result = lange_raw
     result = result.replace("'Lange bedrijfsnaam'", effective_lange)
     result = result.replace("[Lange bedrijfsnaam]", effective_lange)
+    result = result.replace("[Klantnaam]", effective_lange)
     result = result.replace("'Korte bedrijfsnaam'", korte_naam)
     result = result.replace("[Korte bedrijfsnaam]", korte_naam)
     return result
@@ -293,7 +299,9 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
     s = str(val)
     # normaliseer lookup-sleutel: zelfde transformaties als load_variants
     key = s.lower()
-    key = key.replace(TEMPLATE_COMPANY.lower(), "[bedrijfsnaam]")   # "dcn" → "[bedrijfsnaam]"
+    key = key.replace("[plaats]", TEMPLATE_CITY.lower())            # nieuw: [Plaats] → groningen
+    key = key.replace("[klantnaam]", "[bedrijfsnaam]")              # nieuw: [Klantnaam] → [Bedrijfsnaam]
+    key = key.replace(TEMPLATE_COMPANY.lower(), "[bedrijfsnaam]")   # oud: dcn → [bedrijfsnaam]
     key = key.replace("[reviewscore]", _KEY_REVIEW).replace("[jarengarantie]", _KEY_JAREN)
 
     if key in variants:
@@ -632,7 +640,16 @@ def process_city(
         for col in AD_TEXT_COLS:
             if col not in df.columns:
                 continue
-            if _explicit:
+            if _explicit and variants:
+                # Eerst variant opzoeken (stad-lengte logica), dan explicit placeholders invullen
+                df[col] = df[col].apply(
+                    lambda v, _col=col, _c=city, _v=variants, _m=merk_info, _p=_tp:
+                        _apply_explicit_text(
+                            _apply_variant(v, _c, _v, _m, col=_col),
+                            _c, _m, _p, col=_col
+                        ) if (pd.notna(v) and str(v).strip()) else v
+                )
+            elif _explicit:
                 df[col] = df[col].apply(
                     lambda v, _col=col, _c=city, _m=merk_info, _p=_tp:
                         _apply_explicit_text(v, _c, _m, _p, col=_col)
