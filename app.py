@@ -285,7 +285,8 @@ if st.session_state.results is not None:
 st.header("1. Klantgegevens")
 eigen_merk = selected_merk == "Eigen merk"
 
-merk_info = None
+merk_info   = None
+klant_prijs = None
 if eigen_merk:
     st.subheader("Klantgegevens")
     if _toon_uitgebreide_merk_info:
@@ -309,11 +310,13 @@ if eigen_merk:
             "usp_fallback":   "100% Tevreden? Dan Wij Ook",
         }
     else:
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             korte_naam = st.text_input("Korte bedrijfsnaam", placeholder="VB")
         with col2:
             lange_naam = st.text_input("Lange bedrijfsnaam", placeholder="Van Beynen Schoorsteenvegers")
+        with col3:
+            klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
         merk_info = {
             "korte_naam":     korte_naam.strip(),
             "lange_naam":     lange_naam.strip(),
@@ -713,6 +716,7 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 fallback_lokaal_cents  = _fallback_lokaal_cents,
                 template_city          = _branch_cfg.get("template_city") or None,
                 template_company       = _branch_cfg.get("template_company") or None,
+                template_price         = klant_prijs,
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs

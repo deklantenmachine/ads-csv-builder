@@ -23,6 +23,7 @@ TEMPLATE_NET            = "050"
 TEMPLATE_COMPANY        = "DCN"                  # bedrijfsnaam placeholder in eigen merk CSV/Excel
 TEMPLATE_DOMAIN         = "dcn-dakdekkers.nl"    # domein in eigen merk sjabloon-CSV
 TEMPLATE_USP            = "Familiebedrijf Sinds 1966"  # USP placeholder in eigen merk CSV
+TEMPLATE_PRICE          = "€59,50"                 # prijsplaatshouder in eigen merk CSV
 TEMPLATE_REVIEW_SCORE   = "9,6"                  # review score in portaal Excel-varianten
 TEMPLATE_JAREN_GARANTIE = "10"                   # jaren garantie in portaal Excel-varianten
 
@@ -456,11 +457,13 @@ def process_city(
     ad_schedule_override: str = "",   # tool-veld overschrijft sheet indien ingevuld
     tmpl_city:    str | None = None,
     tmpl_company: str | None = None,
+    tmpl_price:   str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     city  = str(row["Plaats"]).strip()
     _tc   = tmpl_city    or TEMPLATE_CITY
     _tco  = tmpl_company or TEMPLATE_COMPANY
+    _tp   = tmpl_price   or None
 
     # Ad Schedule: tool-veld heeft voorrang, anders uit sheet
     ad_schedule = ad_schedule_override.strip() or str(row.get("Ad Schedule", "")).strip()
@@ -604,6 +607,18 @@ def process_city(
                                 else v
                         )
 
+        # Vervang prijsplaatshouder (bijv. "€59,50") door klantprijs
+        if _tp:
+            for col in AD_TEXT_COLS:
+                if col not in df.columns:
+                    continue
+                df[col] = df[col].apply(
+                    lambda v, _pt=TEMPLATE_PRICE, _pn=_tp:
+                        str(v).replace(_pt, _pn)
+                        if pd.notna(v) and _pt in str(v)
+                        else v
+                )
+
     # Labels: zorg dat Netnummer {net} aanwezig is op alle niveaus
     lok = _ensure_netnummer_label(lok, net)
     sta = _ensure_netnummer_label(sta, net)
@@ -737,11 +752,13 @@ def build_all(
     fallback_lokaal_cents: int | None = None,
     template_city:        str | None = None,
     template_company:     str | None = None,
+    template_price:       str | None = None,
 ) -> tuple[dict, list[str]]:
 
     # Overschrijf template-placeholders als de branche andere waarden gebruikt
     _tmpl_city    = template_city    or TEMPLATE_CITY
     _tmpl_company = template_company or TEMPLATE_COMPANY
+    _tmpl_price   = template_price   or None
 
     df_lokaal = pd.read_csv(lokaal_path, sep=SEP, encoding=ENCODING, low_memory=False)
     df_stad   = pd.read_csv(stad_path,   sep=SEP, encoding=ENCODING, low_memory=False)
@@ -849,7 +866,7 @@ def build_all(
         try:
             lok_df, sta_df = process_city(
                 df_lokaal, df_stad, row, variants, merk_info, ad_schedule_override,
-                tmpl_city=_tmpl_city, tmpl_company=_tmpl_company,
+                tmpl_city=_tmpl_city, tmpl_company=_tmpl_company, tmpl_price=_tmpl_price,
             )
         except Exception as exc:
             errors.append(f"{city}: {exc}")
