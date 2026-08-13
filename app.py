@@ -312,8 +312,9 @@ if st.session_state.results is not None:
 st.header("1. Klantgegevens")
 eigen_merk = selected_merk == "Eigen merk"
 
-merk_info   = None
-klant_prijs = None
+merk_info         = None
+klant_prijs       = None
+portaal_klantnaam = ""
 if eigen_merk:
     st.subheader("Klantgegevens")
     if _toon_uitgebreide_merk_info:
@@ -351,7 +352,11 @@ if eigen_merk:
             "usp_fallback":   "",
         }
 else:
-    klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
+    col1, col2 = st.columns(2)
+    with col1:
+        portaal_klantnaam = st.text_input("Klantnaam campagne", placeholder="Multi-Reiniging Service")
+    with col2:
+        klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
 
 with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
     import tempfile as _tf, io as _io
@@ -762,6 +767,7 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 sheet_name             = sheet_name,
                 klant_filter           = geselecteerde_klanten,
                 merk_info              = merk_info if eigen_merk else None,
+                portaal_klantnaam      = portaal_klantnaam.strip() if not eigen_merk else None,
                 ad_schedule_override   = ad_schedule_override,
                 cpc_import             = st.session_state.cpc_import,
                 pause_import           = st.session_state.pause_import,

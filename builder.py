@@ -500,9 +500,10 @@ def process_city(
     variants:   dict | None = None,
     merk_info:  dict | None = None,   # None = portaal mode
     ad_schedule_override: str = "",   # tool-veld overschrijft sheet indien ingevuld
-    tmpl_city:    str | None = None,
-    tmpl_company: str | None = None,
-    tmpl_price:   str | None = None,
+    tmpl_city:          str | None = None,
+    tmpl_company:       str | None = None,
+    tmpl_price:         str | None = None,
+    portaal_klantnaam:  str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     city  = str(row["Plaats"]).strip()
@@ -545,15 +546,13 @@ def process_city(
     _explicit = _uses_explicit_placeholders(lok) or _uses_explicit_placeholders(sta)
 
     # Portaal + expliciet formaat: bouw minimale merk_info zodat [Klantnaam] vervangen wordt
-    # met de klantnaam uit de sheet (bijv. "Multi-Reiniging Service")
-    if _explicit and merk_info is None:
-        _klant_sheet = str(row.get("Klant", "")).strip()
-        if _klant_sheet and _klant_sheet != "nan":
-            merk_info = {
-                "korte_naam": _klant_sheet,
-                "lange_naam": _klant_sheet,
-                "review_score": "", "jaren_garantie": "", "usp": "", "usp_fallback": "",
-            }
+    # met de klantnaam uit het UI-veld "Klantnaam campagne"
+    if _explicit and merk_info is None and portaal_klantnaam:
+        merk_info = {
+            "korte_naam": portaal_klantnaam,
+            "lange_naam": portaal_klantnaam,
+            "review_score": "", "jaren_garantie": "", "usp": "", "usp_fallback": "",
+        }
 
     for df in (lok, sta):
         # Start/End Date
@@ -888,6 +887,7 @@ def build_all(
     variants_path:        str | None = None,
     klant_filter:         list[str] | None = None,
     merk_info:            dict | None = None,
+    portaal_klantnaam:    str | None = None,
     ad_schedule_override: str = "",
     cpc_import:           CpcAdviceImport | None = None,
     pause_import:         PauseAdviceImport | None = None,
@@ -1012,6 +1012,7 @@ def build_all(
             lok_df, sta_df = process_city(
                 df_lokaal, df_stad, row, variants, merk_info, ad_schedule_override,
                 tmpl_city=_tmpl_city, tmpl_company=_tmpl_company, tmpl_price=_tmpl_price,
+                portaal_klantnaam=portaal_klantnaam or None,
             )
         except Exception as exc:
             errors.append(f"{city}: {exc}")
