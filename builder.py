@@ -544,6 +544,17 @@ def process_city(
     sta      = df_stad.copy()
     _explicit = _uses_explicit_placeholders(lok) or _uses_explicit_placeholders(sta)
 
+    # Portaal + expliciet formaat: bouw minimale merk_info zodat [Klantnaam] vervangen wordt
+    # met de klantnaam uit de sheet (bijv. "Multi-Reiniging Service")
+    if _explicit and merk_info is None:
+        _klant_sheet = str(row.get("Klant", "")).strip()
+        if _klant_sheet and _klant_sheet != "nan":
+            merk_info = {
+                "korte_naam": _klant_sheet,
+                "lange_naam": _klant_sheet,
+                "review_score": "", "jaren_garantie": "", "usp": "", "usp_fallback": "",
+            }
+
     for df in (lok, sta):
         # Start/End Date
         mask = df["Start Date"].notna() & (df["Start Date"].astype(str).str.strip() != "")
