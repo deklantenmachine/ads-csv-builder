@@ -606,6 +606,16 @@ def process_city(
                         lambda v, _b=_base_url, _c=city, _ph=phone:
                             v.replace("[url]", _b).replace("[Plaats]", _c).replace("[Nummer]", _ph)
                     )
+            # Price extension URLs (Final URL 1 t/m 8 en hun #Original varianten)
+            for _n in range(1, 9):
+                for _col in (f"Final URL {_n}", f"Final URL {_n}#Original"):
+                    if _col in df.columns:
+                        _m2 = df[_col].notna() & (df[_col].astype(str).str.strip() != "")
+                        if _m2.any():
+                            df.loc[_m2, _col] = df.loc[_m2, _col].astype(str).apply(
+                                lambda v, _b=_base_url, _c=city, _ph=phone:
+                                    v.replace("[url]", _b).replace("[Plaats]", _c).replace("[Nummer]", _ph)
+                            )
         else:
             if url:
                 if merk_info:
