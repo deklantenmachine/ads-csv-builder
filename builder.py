@@ -1053,14 +1053,26 @@ def build_all(
     if dry_run:
         return {"__dry_run__": dry_rows}, errors
 
+    def _dedup_campaign_rows(df: pd.DataFrame) -> pd.DataFrame:
+        """Verwijder dubbele campagne-definitierijen (Campaign#Original ingevuld).
+        Bij meerdere steden in één campagne bevat elke stad een identieke campagne-rij.
+        Google Ads Editor interpreteert elk als aparte campagne — bewaar er alleen de eerste per naam."""
+        if "Campaign#Original" not in df.columns:
+            return df
+        is_camp = df["Campaign#Original"].notna() & (df["Campaign#Original"].astype(str).str.strip() != "")
+        camp_rows = df[is_camp]
+        other_rows = df[~is_camp]
+        camp_deduped = camp_rows.drop_duplicates(subset=["Campaign#Original"], keep="first")
+        return pd.concat([camp_deduped, other_rows], ignore_index=True)
+
     merged = {}
     for klant, parts in results.items():
         lokaal_frames = parts["lokaal"]
         stad_frames   = parts["stad"]
         merged[klant] = {
-            "lokaal": pd.concat(lokaal_frames, ignore_index=True) if lokaal_frames
+            "lokaal": _dedup_campaign_rows(pd.concat(lokaal_frames, ignore_index=True)) if lokaal_frames
                       else pd.read_csv(lokaal_path, sep=SEP, encoding=ENCODING, low_memory=False).head(0),
-            "stad":   pd.concat(stad_frames, ignore_index=True) if stad_frames
+            "stad":   _dedup_campaign_rows(pd.concat(stad_frames, ignore_index=True)) if stad_frames
                       else pd.read_csv(stad_path, sep=SEP, encoding=ENCODING, low_memory=False).head(0),
         }
 
