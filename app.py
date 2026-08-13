@@ -350,6 +350,8 @@ if eigen_merk:
             "usp":            "",
             "usp_fallback":   "",
         }
+else:
+    klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
 
 with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
     import tempfile as _tf, io as _io
