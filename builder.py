@@ -182,7 +182,9 @@ def _ensure_netnummer_label(df: pd.DataFrame, net: str) -> pd.DataFrame:
     mask = has_campaign & ~has_location
 
     df = df.copy()
-    df.loc[mask, "Labels"] = df.loc[mask, "Labels"].apply(_add)
+    if "Labels" in df.columns and mask.any():
+        df["Labels"] = df["Labels"].astype(object)
+        df.loc[mask, "Labels"] = label
     return df
 
 
@@ -548,14 +550,22 @@ def process_city(
     if net_raw in ("", "nan"):
         net = ""
     else:
+        # Strip non-numeric prefix (e.g. "Netnummer 56" → "56")
+        import re as _re
+        _digits_only = _re.sub(r'^[^\d]*', '', net_raw).strip()
+        if _digits_only:
+            net_raw = _digits_only
         try:
             net = str(int(float(net_raw)))
         except ValueError:
             net = net_raw
-        if "-" in phone_raw:
-            tel_prefix = phone_raw.split("-")[0]
-            if tel_prefix.lstrip("0") == net:
-                net = tel_prefix
+        # Herstel leidende nul via telefoonnummer (NL: 056-..., BE: 056 89 50 11 of 056/...)
+        for _sep in ("-", "/", " "):
+            if _sep in phone_raw:
+                tel_prefix = phone_raw.split(_sep)[0]
+                if tel_prefix.lstrip("0") == net:
+                    net = tel_prefix
+                break
 
     phone = phone_raw
     url   = str(row.get("URL", "")).strip()
@@ -1093,7 +1103,8 @@ def build_all(
                 portaal_klantnaam=portaal_klantnaam or None,
             )
         except Exception as exc:
-            errors.append(f"{city}: {exc}")
+            import traceback as _tb
+            errors.append(f"[v2] {city}: {exc}\n{''.join(_tb.format_tb(exc.__traceback__))}")
             continue
 
         if klant not in results:
