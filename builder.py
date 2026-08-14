@@ -919,7 +919,7 @@ def _apply_keyword_cpc_sheet(
     ag_mask = has_campaign & has_ad_group & ~has_keyword & ~has_location
     for _ag_col in ("Default max. CPC", "Max CPC"):
         if _ag_col in df.columns:
-            df.loc[ag_mask, _ag_col] = "0.50"
+            df.loc[ag_mask, _ag_col] = 0.50
 
     # Zoekwoord-rijen: per-zoekwoord CPC opzoeken
     if "Max CPC" in df.columns:
@@ -929,7 +929,7 @@ def _apply_keyword_cpc_sheet(
             if cpc is None:
                 cpc = fallback
             if cpc is not None:
-                df.at[idx, "Max CPC"] = _cents_to_str(cpc)
+                df.at[idx, "Max CPC"] = round(cpc / 100, 2)
 
     return df
 
