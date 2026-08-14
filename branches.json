@@ -56,7 +56,7 @@
         "stad_template_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/BE/stad_hoogste.csv",
         "lokaal_laagste_path": "",
         "stad_laagste_path": "",
-        "variants_path": "",
+        "variants_path": "branch_files/Schoorsteenveger/Overkoepelend merk (portaal)/BE/variants.xlsx",
         "cpc_file_path": "",
         "pause_file_path": "",
         "template_city": "",
