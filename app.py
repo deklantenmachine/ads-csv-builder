@@ -422,11 +422,14 @@ if eigen_merk:
             "usp_fallback":   "100% Tevreden? Dan Wij Ook",
         }
     else:
-        col1, col2 = st.columns(2)
-        with col1:
+        if selected_land == "BE":
             klantnaam = st.text_input("Klantnaam", placeholder="Schoorsteenvegers De Spil")
-        with col2:
-            klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                klantnaam = st.text_input("Klantnaam", placeholder="Schoorsteenvegers De Spil")
+            with col2:
+                klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
         merk_info = {
             "korte_naam":     klantnaam.strip(),
             "lange_naam":     klantnaam.strip(),
@@ -436,11 +439,14 @@ if eigen_merk:
             "usp_fallback":   "",
         }
 else:
-    col1, col2 = st.columns(2)
-    with col1:
+    if selected_land == "BE":
         portaal_klantnaam = st.text_input("Klantnaam campagne", placeholder="Multi-Reiniging Service")
-    with col2:
-        klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            portaal_klantnaam = st.text_input("Klantnaam campagne", placeholder="Multi-Reiniging Service")
+        with col2:
+            klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
 
 with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
     import tempfile as _tf, io as _io
