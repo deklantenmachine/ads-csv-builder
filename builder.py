@@ -33,9 +33,15 @@ _KEY_JAREN  = "[jarengarantie]"
 
 # Plaatsen die Google als algemeen woord herkent → nooit +Stad campagne genereren
 EXCLUDED_STAD_CITIES: frozenset[str] = frozenset({
+    # Nederland
     "huizen", "zetten", "best", "dieren", "echt",
     "hoornaar", "heel", "enter", "zeeland", "noorden",
     "handel", "een",
+    # België
+    "menen", "balen", "geel", "halen", "as", "landen", "peer",
+    "boom", "mol", "lint", "meer", "wortel", "paal", "beek",
+    "lier", "schoten", "duffel", "weelde", "beringen", "ranst",
+    "wichelen", "deerlijk", "heers", "wellen", "schaffen",
 })
 
 SEP      = ";"
