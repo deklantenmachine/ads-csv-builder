@@ -254,10 +254,20 @@ def load_variants(xlsx_path: str) -> dict:
     df = pd.read_excel(xlsx_path, sheet_name=0, header=None)
     variants: dict = {}
 
+    # Detecteer formaat: breed formaat (BE) heeft ≥5 kolommen met drempel in kolom 4
+    _ncols = len(df.columns)
+    _breed = _ncols >= 5
+
     for _, row in df.iterrows():
-        korte   = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
-        lange   = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
-        drempel = row.iloc[2] if len(row) > 2 else None
+        if _breed:
+            # Kolom 1 = template/korte variant, kolom 3 = lange variant, kolom 4 = drempel
+            korte   = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
+            lange   = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ""
+            drempel = row.iloc[4] if len(row) > 4 else None
+        else:
+            korte   = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            lange   = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
+            drempel = row.iloc[2] if len(row) > 2 else None
 
         if not korte or korte == "nan":
             continue
