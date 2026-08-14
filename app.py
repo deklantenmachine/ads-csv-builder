@@ -134,6 +134,61 @@ if _kw_cpc_sheet_url and _kw_cpc_sheet_name:
 
 _active_kw_cpc_sheet = st.session_state.get("kw_cpc_sheet") if _kw_cpc_sheet_url else None
 
+if _active_kw_cpc_sheet and _active_kw_cpc_sheet.loaded:
+    _n_lookup   = len(_active_kw_cpc_sheet._lookup)
+    _n_fallback = len(_active_kw_cpc_sheet._fallback)
+    st.success(f"✓ CPC-blad geladen: **{_n_lookup:,}** zoekwoord-CPC's, **{_n_fallback}** fallback-accounts")
+
+    with st.expander("🔍 Controleer CPC-lookup", expanded=False):
+        st.caption("Kies een account en plaats om te zien welke CPC's worden opgehaald.")
+        _merktype_cpc_preview = {
+            "Eigen merk": "eigen merk",
+            "Overkoepelend merk (portaal)": "schoorsteenbrigade (overkoepelend merk)",
+        }.get(selected_merk, selected_merk.lower())
+        # Unieke accounts (voor dit merktype)
+        _preview_accounts = sorted({
+            k[2] for k in _active_kw_cpc_sheet._lookup
+            if k[1] == _merktype_cpc_preview
+        })
+        _preview_landen = sorted({
+            k[0] for k in _active_kw_cpc_sheet._lookup
+            if k[1] == _merktype_cpc_preview
+        })
+        _pc1, _pc2, _pc3 = st.columns(3)
+        with _pc1:
+            _sel_land_p = st.selectbox("Land", _preview_landen or ["nederland"], key="cpc_prev_land")
+        with _pc2:
+            _accs_for_land = sorted({
+                k[2] for k in _active_kw_cpc_sheet._lookup
+                if k[1] == _merktype_cpc_preview and k[0] == _sel_land_p
+            })
+            _sel_acc = st.selectbox("Account", _accs_for_land or ["—"], key="cpc_prev_acc")
+        with _pc3:
+            _plaatsen_for_acc = sorted({
+                k[3] for k in _active_kw_cpc_sheet._lookup
+                if k[1] == _merktype_cpc_preview and k[0] == _sel_land_p and k[2] == _sel_acc
+            })
+            _sel_plaats = st.selectbox("Plaats", _plaatsen_for_acc or ["—"], key="cpc_prev_plaats")
+
+        # Toon zoekwoorden + CPC voor deze combinatie
+        _preview_rows = [
+            {"Zoekwoord": k[4], "CPC": f"€{v/100:.2f}"}
+            for k, v in _active_kw_cpc_sheet._lookup.items()
+            if k[0] == _sel_land_p and k[1] == _merktype_cpc_preview and k[2] == _sel_acc and k[3] == _sel_plaats
+        ]
+        if _preview_rows:
+            st.dataframe(pd.DataFrame(_preview_rows).sort_values("Zoekwoord"), use_container_width=True, hide_index=True)
+        else:
+            st.info("Geen zoekwoorden gevonden voor deze combinatie.")
+
+        # Fallback CPC
+        _fb_key = (_sel_land_p, _merktype_cpc_preview, _sel_acc)
+        _fb_val = _active_kw_cpc_sheet._fallback.get(_fb_key)
+        if _fb_val is not None:
+            st.info(f"Fallback CPC voor dit account: **€{_fb_val/100:.2f}**")
+        else:
+            st.warning("Geen fallback CPC gevonden voor dit account.")
+
 # ── Merktype-string voor CPC-blad lookup ─────────────────────────────────────
 _MERKTYPE_CPC_MAP = {
     "Eigen merk":                   "eigen merk",

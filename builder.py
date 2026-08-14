@@ -895,21 +895,39 @@ def _apply_keyword_cpc_sheet(
     account_cpc:  str,
     city:         str,
 ) -> pd.DataFrame:
-    """Pas per-zoekwoord CPC toe vanuit het centrale keyword-adviesblad."""
-    if "Keyword" not in df.columns or "Max CPC" not in df.columns:
+    """Pas per-zoekwoord CPC toe vanuit het centrale keyword-adviesblad.
+    Ad group Default max. CPC wordt op €0,50 gezet zodat zoekwoord-CPC altijd leidend is.
+    """
+    if "Keyword" not in df.columns:
         return df
 
     df       = df.copy()
     fallback = cpc_sheet.get_fallback_cpc(land, merktype_cpc, account_cpc)
 
-    has_kw = df["Keyword"].notna() & (df["Keyword"].astype(str).str.strip() != "")
-    for idx in df.index[has_kw]:
-        kw  = str(df.at[idx, "Keyword"]).strip()
-        cpc = cpc_sheet.get_cpc(land, merktype_cpc, account_cpc, city, kw)
-        if cpc is None:
-            cpc = fallback
-        if cpc is not None:
-            df.at[idx, "Max CPC"] = _cents_to_str(cpc)
+    def _filled(col: str) -> pd.Series:
+        if col not in df.columns:
+            return pd.Series(False, index=df.index)
+        return df[col].notna() & (df[col].astype(str).str.strip() != "")
+
+    has_campaign = _filled("Campaign")
+    has_ad_group = _filled("Ad Group")
+    has_keyword  = _filled("Keyword")
+    has_location = _filled("Location")
+
+    # Ad group-rijen: Default max. CPC op €0,50 zodat zoekwoord-CPC nooit overschreden wordt
+    ag_mask = has_campaign & has_ad_group & ~has_keyword & ~has_location
+    if "Default max. CPC" in df.columns:
+        df.loc[ag_mask, "Default max. CPC"] = "0.50"
+
+    # Zoekwoord-rijen: per-zoekwoord CPC opzoeken
+    if "Max CPC" in df.columns:
+        for idx in df.index[has_keyword]:
+            kw  = str(df.at[idx, "Keyword"]).strip()
+            cpc = cpc_sheet.get_cpc(land, merktype_cpc, account_cpc, city, kw)
+            if cpc is None:
+                cpc = fallback
+            if cpc is not None:
+                df.at[idx, "Max CPC"] = _cents_to_str(cpc)
 
     return df
 
