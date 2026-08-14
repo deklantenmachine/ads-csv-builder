@@ -193,6 +193,7 @@ def _parse_locations(raw: str) -> list[tuple[str, str]]:
     result = []
     if not raw or pd.isna(raw) or str(raw).strip() == "":
         return result
+    seen: set = set()
     for part in str(raw).split("|"):
         part = part.strip()
         if not part:
@@ -200,7 +201,10 @@ def _parse_locations(raw: str) -> list[tuple[str, str]]:
         idx = part.find(",")
         if idx == -1:
             continue
-        result.append((part[:idx].strip(), part[idx + 1:].strip()))
+        item = (part[:idx].strip(), part[idx + 1:].strip())
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
     return result
 
 
