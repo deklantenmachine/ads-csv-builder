@@ -143,7 +143,7 @@ if _active_kw_cpc_sheet and _active_kw_cpc_sheet.loaded:
         st.caption("Kies een account en plaats om te zien welke CPC's worden opgehaald.")
         _merktype_cpc_preview = {
             "Eigen merk": "eigen merk",
-            "Overkoepelend merk (portaal)": "schoorsteenbrigade (overkoepelend merk)",
+            "Overkoepelend merk (portaal)": "schoorsteenbrigade",
         }.get(selected_merk, selected_merk.lower())
         # Unieke accounts (voor dit merktype)
         _preview_accounts = sorted({
@@ -192,7 +192,7 @@ if _active_kw_cpc_sheet and _active_kw_cpc_sheet.loaded:
 # ── Merktype-string voor CPC-blad lookup ─────────────────────────────────────
 _MERKTYPE_CPC_MAP = {
     "Eigen merk":                   "eigen merk",
-    "Overkoepelend merk (portaal)": "schoorsteenbrigade (overkoepelend merk)",
+    "Overkoepelend merk (portaal)": "schoorsteenbrigade",
 }
 _merktype_cpc = _MERKTYPE_CPC_MAP.get(selected_merk, selected_merk.lower())
 

@@ -44,9 +44,9 @@ ENCODING = "utf-8-sig"
 # Klantnaam (plaatsensheet) → Google Ads accountnaam in het centrale CPC-blad (Schoorsteenveger).
 _SCHOORSTEENVEGER_ACCOUNT_MAP: dict[str, dict[str, str]] = {
     "algemeen onderhoud nederland":              {"eigen": "Van Beynen Schoorsteenvegers",      "portaal": "De Schoorsteenbrigade (AON)"},
-    "schoorsteenveegbedrijf van nieuwenhoven":   {"eigen": "VNH Schoorsteenvegers",             "portaal": "De Schoorsteenbrigade VNH"},
+    "schoorsteenveegbedrijf van nieuwenhoven":   {"eigen": "VNH Schoorsteenvegers",             "portaal": "De Schoorsteenbrigade (VNH)"},
     "uw dakbeheerder":                           {"eigen": "Uw Schoorsteenveger",               "portaal": "DSB Uw Schoorsteenveger"},
-    "schoorsteenvegersbedrijf de spil":          {"eigen": "Schoorsteenvegers De Spil",         "portaal": "De Spil Schoorsteenbrigade"},
+    "schoorsteenvegersbedrijf de spil":          {"eigen": "De Spil Schoorsteenvegersbedrijf",  "portaal": "De Spil Schoorsteenbrigade"},
     "master cleaner bvba":                       {"eigen": "Schoorsteenveger Master Cleaner",   "portaal": "DSB Master Cleaner"},
     "schoorsteenreiniger filip":                 {"eigen": "Schoorsteenveger Filip",            "portaal": "De Schoorsteenbrigade BE Filip"},
     "schoorsteenveger bams":                     {"eigen": "Schoorsteenveger Bams",             "portaal": "De Schoorsteenbrigade (Bams)"},
@@ -914,10 +914,11 @@ def _apply_keyword_cpc_sheet(
     has_keyword  = _filled("Keyword")
     has_location = _filled("Location")
 
-    # Ad group-rijen: Default max. CPC op €0,50 zodat zoekwoord-CPC nooit overschreden wordt
+    # Ad group-rijen: Max CPC op €0,50 zodat zoekwoord-CPC nooit overschreden wordt
     ag_mask = has_campaign & has_ad_group & ~has_keyword & ~has_location
-    if "Default max. CPC" in df.columns:
-        df.loc[ag_mask, "Default max. CPC"] = "0.50"
+    for _ag_col in ("Default max. CPC", "Max CPC"):
+        if _ag_col in df.columns:
+            df.loc[ag_mask, _ag_col] = "0.50"
 
     # Zoekwoord-rijen: per-zoekwoord CPC opzoeken
     if "Max CPC" in df.columns:
