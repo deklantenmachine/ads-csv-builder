@@ -41,6 +41,26 @@ EXCLUDED_STAD_CITIES: frozenset[str] = frozenset({
 SEP      = ";"
 ENCODING = "utf-8-sig"
 
+# Klantnaam (plaatsensheet) → Google Ads accountnaam in het centrale CPC-blad (Schoorsteenveger).
+_SCHOORSTEENVEGER_ACCOUNT_MAP: dict[str, dict[str, str]] = {
+    "algemeen onderhoud nederland":              {"eigen": "Van Beynen Schoorsteenvegers",      "portaal": "De Schoorsteenbrigade (AON)"},
+    "schoorsteenveegbedrijf van nieuwenhoven":   {"eigen": "VNH Schoorsteenvegers",             "portaal": "De Schoorsteenbrigade VNH"},
+    "uw dakbeheerder":                           {"eigen": "Uw Schoorsteenveger",               "portaal": "DSB Uw Schoorsteenveger"},
+    "schoorsteenvegersbedrijf de spil":          {"eigen": "Schoorsteenvegers De Spil",         "portaal": "De Spil Schoorsteenbrigade"},
+    "master cleaner bvba":                       {"eigen": "Schoorsteenveger Master Cleaner",   "portaal": "DSB Master Cleaner"},
+    "schoorsteenreiniger filip":                 {"eigen": "Schoorsteenveger Filip",            "portaal": "De Schoorsteenbrigade BE Filip"},
+    "schoorsteenveger bams":                     {"eigen": "Schoorsteenveger Bams",             "portaal": "De Schoorsteenbrigade (Bams)"},
+    "schoorsteenveger johan":                    {"eigen": "Schoorsteenveger Johan",            "portaal": "De Schoorsteenbrigade (West-Vlaanderen)"},
+}
+
+
+def _resolve_sv_cpc_account(klant: str, is_portaal: bool) -> str:
+    """Vertaal klantnaam (plaatsensheet) → accountnaam in het centrale Schoorsteenveger CPC-blad."""
+    key   = "portaal" if is_portaal else "eigen"
+    entry = _SCHOORSTEENVEGER_ACCOUNT_MAP.get(klant.strip().lower())
+    return entry[key] if entry else klant
+
+
 # Expliciete koppeling van klantnaam (spreadsheet) → accountnaam in CPC/pauzebestand.
 # Wordt gebruikt vóór fuzzy matching zodat naamverschillen niet tot foute matches leiden.
 _KLANT_TO_CPC_ACCOUNT: dict[str, str] = {
@@ -867,6 +887,33 @@ def _apply_cpc_to_df(
     return df
 
 
+def _apply_keyword_cpc_sheet(
+    df:           pd.DataFrame,
+    cpc_sheet,    # KeywordCpcSheet
+    land:         str,
+    merktype_cpc: str,
+    account_cpc:  str,
+    city:         str,
+) -> pd.DataFrame:
+    """Pas per-zoekwoord CPC toe vanuit het centrale keyword-adviesblad."""
+    if "Keyword" not in df.columns or "Max CPC" not in df.columns:
+        return df
+
+    df       = df.copy()
+    fallback = cpc_sheet.get_fallback_cpc(land, merktype_cpc, account_cpc)
+
+    has_kw = df["Keyword"].notna() & (df["Keyword"].astype(str).str.strip() != "")
+    for idx in df.index[has_kw]:
+        kw  = str(df.at[idx, "Keyword"]).strip()
+        cpc = cpc_sheet.get_cpc(land, merktype_cpc, account_cpc, city, kw)
+        if cpc is None:
+            cpc = fallback
+        if cpc is not None:
+            df.at[idx, "Max CPC"] = _cents_to_str(cpc)
+
+    return df
+
+
 def _force_campaign_status(df: pd.DataFrame, status: str) -> pd.DataFrame:
     """Forceer Campaign Status op rijen met een ingevuld Campaign-veld."""
     if "Campaign Status" not in df.columns:
@@ -898,6 +945,10 @@ def build_all(
     template_city:        str | None = None,
     template_company:     str | None = None,
     template_price:       str | None = None,
+    keyword_cpc_sheet=None,    # KeywordCpcSheet | None — centraal CPC-blad (Schoorsteenveger)
+    land:                 str = "NL",  # "NL" of "BE" — alleen gebruikt met keyword_cpc_sheet
+    merktype_cpc:         str = "",    # merktype-string zoals in CPC-blad
+    is_portaal:           bool = False, # voor account-vertaling in keyword_cpc_sheet
 ) -> tuple[dict, list[str]]:
 
     # Overschrijf template-placeholders als de branche andere waarden gebruikt
@@ -1025,12 +1076,16 @@ def build_all(
         if local_decision.should_build and len(lok_df) > 0:
             if local_decision.final_status == "Paused":
                 lok_df = _force_campaign_status(lok_df, "Paused")
-            lok_df = _apply_cpc_to_df(
-                lok_df,
-                local_decision.campaign_cpc_cents,
-                local_decision.ad_group_cpc_cents,
-                local_decision.keyword_cpc_cents,
-            )
+            if keyword_cpc_sheet is not None:
+                _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
+                lok_df = _apply_keyword_cpc_sheet(lok_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
+            else:
+                lok_df = _apply_cpc_to_df(
+                    lok_df,
+                    local_decision.campaign_cpc_cents,
+                    local_decision.ad_group_cpc_cents,
+                    local_decision.keyword_cpc_cents,
+                )
             results[klant]["lokaal"].append(lok_df)
         elif not local_decision.should_build:
             errors.append(f"Info: {city} (lokaal) niet gebouwd — {local_decision.audit_trail[-1].applied_value if local_decision.audit_trail else 'pauzeringsregel'}.")
@@ -1039,12 +1094,16 @@ def build_all(
         if not stad_excluded and stad_decision.should_build:
             if stad_decision.final_status == "Paused":
                 sta_df = _force_campaign_status(sta_df, "Paused")
-            sta_df = _apply_cpc_to_df(
-                sta_df,
-                stad_decision.campaign_cpc_cents,
-                stad_decision.ad_group_cpc_cents,
-                stad_decision.keyword_cpc_cents,
-            )
+            if keyword_cpc_sheet is not None:
+                _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
+                sta_df = _apply_keyword_cpc_sheet(sta_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
+            else:
+                sta_df = _apply_cpc_to_df(
+                    sta_df,
+                    stad_decision.campaign_cpc_cents,
+                    stad_decision.ad_group_cpc_cents,
+                    stad_decision.keyword_cpc_cents,
+                )
             results[klant]["stad"].append(sta_df)
         elif not stad_excluded and not stad_decision.should_build:
             errors.append(f"Info: {city} (+Stad) niet gebouwd — {stad_decision.audit_trail[-1].applied_value if stad_decision.audit_trail else 'pauzeringsregel'}.")

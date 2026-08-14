@@ -13,6 +13,7 @@ from advice_parser import (
     parse_cpc_advice, parse_pause_advice,
     detect_advice_file_type, AdviceFileType,
 )
+from cpc_sheet import KeywordCpcSheet
 
 # ── Branch configuratie ────────────────────────────────────────────────────────
 _BRANCHES_PATH = os.path.join(os.path.dirname(__file__), "branches.json")
@@ -114,6 +115,32 @@ _toon_uitgebreide_merk_info = _ui_cfg.get("toon_uitgebreide_merk_info", True)
 _toon_adviesbestanden       = _ui_cfg.get("toon_adviesbestanden",        True)
 _toon_fallback_cpc          = _ui_cfg.get("toon_fallback_cpc",           True)
 
+# ── Centraal CPC-blad (Schoorsteenveger) ─────────────────────────────────────
+_kw_cpc_sheet_url  = _branches.get(selected_branch, {}).get("keyword_cpc_sheet_url", "")
+_kw_cpc_sheet_name = _branches.get(selected_branch, {}).get("keyword_cpc_sheet_name", "")
+_kw_cpc_cache_key  = f"{selected_branch}|{_kw_cpc_sheet_url}|{_kw_cpc_sheet_name}"
+
+if _kw_cpc_sheet_url and _kw_cpc_sheet_name:
+    if st.session_state.get("kw_cpc_sheet_key") != _kw_cpc_cache_key:
+        try:
+            _kw_sheet = KeywordCpcSheet()
+            _kw_sheet.load(_kw_cpc_sheet_url, _kw_cpc_sheet_name)
+            st.session_state["kw_cpc_sheet"]     = _kw_sheet
+            st.session_state["kw_cpc_sheet_key"] = _kw_cpc_cache_key
+        except Exception as _e:
+            st.warning(f"CPC-blad kon niet geladen worden: {_e}")
+            st.session_state["kw_cpc_sheet"]     = None
+            st.session_state["kw_cpc_sheet_key"] = ""
+
+_active_kw_cpc_sheet = st.session_state.get("kw_cpc_sheet") if _kw_cpc_sheet_url else None
+
+# ── Merktype-string voor CPC-blad lookup ─────────────────────────────────────
+_MERKTYPE_CPC_MAP = {
+    "Eigen merk":                   "eigen merk",
+    "Overkoepelend merk (portaal)": "schoorsteenbrigade (overkoepelend merk)",
+}
+_merktype_cpc = _MERKTYPE_CPC_MAP.get(selected_merk, selected_merk.lower())
+
 # CPC-positie toggle: toon alleen als er laagste-paden zijn geconfigureerd
 _heeft_laagste = bool(
     _branch_cfg.get("lokaal_laagste_path") or _branch_cfg.get("stad_laagste_path")
@@ -196,17 +223,19 @@ st.divider()
 
 # ── session state ─────────────────────────────────────────────────────────────
 _defaults = {
-    "results":       None,
-    "errors":        [],
-    "log":           [],
-    "klanten":       [],
-    "sheet_loaded":  False,
-    "cpc_import":    None,
-    "pause_import":  None,
-    "cpc_confirmed": False,
-    "pause_confirmed": False,
-    "build_kwargs":  None,   # non-file kwargs for converting dry-run → real build
-    "build_files":   None,   # raw bytes {"lokaal", "stad", "variants"} for re-run
+    "results":          None,
+    "errors":           [],
+    "log":              [],
+    "klanten":          [],
+    "sheet_loaded":     False,
+    "cpc_import":       None,
+    "pause_import":     None,
+    "cpc_confirmed":    False,
+    "pause_confirmed":  False,
+    "build_kwargs":     None,   # non-file kwargs for converting dry-run → real build
+    "build_files":      None,   # raw bytes {"lokaal", "stad", "variants"} for re-run
+    "kw_cpc_sheet":     None,   # KeywordCpcSheet instance (Schoorsteenveger)
+    "kw_cpc_sheet_key": "",     # "{branch}|{url}|{tab}" — invalideer cache bij wijziging
 }
 for key, default in _defaults.items():
     if key not in st.session_state:
@@ -776,6 +805,10 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 template_city          = _branch_cfg.get("template_city") or None,
                 template_company       = _branch_cfg.get("template_company") or None,
                 template_price         = klant_prijs,
+                keyword_cpc_sheet      = _active_kw_cpc_sheet,
+                land                   = selected_land,
+                merktype_cpc           = _merktype_cpc,
+                is_portaal             = not eigen_merk,
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs
