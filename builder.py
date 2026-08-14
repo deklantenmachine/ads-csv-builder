@@ -1173,7 +1173,9 @@ def build_all(
         is_camp = df["Campaign#Original"].notna() & (df["Campaign#Original"].astype(str).str.strip() != "")
         camp_rows = df[is_camp]
         other_rows = df[~is_camp]
-        camp_deduped = camp_rows.drop_duplicates(subset=["Campaign#Original"], keep="first")
+        # Dedup op Campaign (ingevulde naam) zodat per-stad campagnes (BE) allemaal hun eigen rij houden.
+        dedup_col = "Campaign" if "Campaign" in camp_rows.columns else "Campaign#Original"
+        camp_deduped = camp_rows.drop_duplicates(subset=[dedup_col], keep="first")
         return pd.concat([camp_deduped, other_rows], ignore_index=True)
 
     merged = {}
