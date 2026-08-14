@@ -49,6 +49,7 @@ _SCHOORSTEENVEGER_ACCOUNT_MAP: dict[str, dict[str, str]] = {
     "schoorsteenvegersbedrijf de spil":          {"eigen": "De Spil Schoorsteenvegersbedrijf",  "portaal": "De Spil Schoorsteenbrigade"},
     "master cleaner bvba":                       {"eigen": "Schoorsteenveger Master Cleaner",   "portaal": "DSB Master Cleaner"},
     "schoorsteenreiniger filip":                 {"eigen": "Schoorsteenveger Filip",            "portaal": "De Schoorsteenbrigade BE Filip"},
+    "multi-reiniging service":                   {"eigen": "MRS Schoorsteenveger",              "portaal": "De Schoorsteenbrigade (MRS)"},
     "schoorsteenveger bams":                     {"eigen": "Schoorsteenveger Bams",             "portaal": "De Schoorsteenbrigade (Bams)"},
     "schoorsteenveger johan":                    {"eigen": "Schoorsteenveger Johan",            "portaal": "De Schoorsteenbrigade (West-Vlaanderen)"},
 }
