@@ -566,7 +566,7 @@ def process_city(
     portaal_klantnaam:  str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
 
-    city  = str(row["Plaats"]).strip()
+    city  = re.sub(r"\s*\([^)]*\)\s*$", "", str(row["Plaats"]).strip()).strip()
     _tc   = tmpl_city    or TEMPLATE_CITY
     _tco  = tmpl_company or TEMPLATE_COMPANY
     _tp   = tmpl_price   or None
@@ -936,10 +936,11 @@ def _apply_cpc_to_df(
 
 
 def _apply_local_adgroup_cpc(
-    df:       pd.DataFrame,
-    cpc_data: dict,
-    city:     str,
-    cpc_type: str,   # "stad" of "lokaal"
+    df:           pd.DataFrame,
+    cpc_data:     dict,
+    city:         str,
+    cpc_type:     str,   # "stad" of "lokaal"
+    klant_account: str = "",  # verwacht account van de huidige klant (voor eigenaarschapswaarschuwing)
 ) -> tuple[pd.DataFrame, list[str]]:
     """
     Past CPC's toe uit het lokale adgroup/keyword-CPC-bestand (BE Dakdekker).
@@ -959,9 +960,15 @@ def _apply_local_adgroup_cpc(
     city_lower   = city.strip().lower()
     type_lower   = cpc_type.lower()
 
-    # Eigenaarschapswaarschuwing: stad staat bij een ander account dan verwacht
+    # Eigenaarschapswaarschuwing: stad bij ander of meerdere accounts dan verwacht
     accs = city_accounts.get(city_lower, set())
-    if len(accs) > 1:
+    if klant_account and accs and klant_account not in accs:
+        warnings.append(
+            f"⚠️ {city}: staat in het CPC-bestand bij {', '.join(sorted(accs))} "
+            f"maar wordt gebouwd voor '{klant_account}'. "
+            f"Controleer de CPC's handmatig in Google Ads Editor."
+        )
+    elif len(accs) > 1:
         warnings.append(
             f"⚠️ {city}: staat bij meerdere accounts in het CPC-bestand ({', '.join(sorted(accs))}). "
             f"Controleer de CPC's handmatig in Google Ads Editor."
@@ -1164,9 +1171,26 @@ def build_all(
         return v if v and v != "nan" else "DakPro"
 
     active_rows   = sheet[sheet.apply(lambda r: not klant_filter or _klant_val(r) in klant_filter, axis=1)]
-    known_cities  = {str(r.get("Plaats", "")).strip() for _, r in active_rows.iterrows()}
+    known_cities  = {re.sub(r"\s*\([^)]*\)\s*$", "", str(r.get("Plaats", "")).strip()).strip() for _, r in active_rows.iterrows()}
     # Vertaal klantnamen naar CPC-accountnamen voor de warnings
     known_klanten = {_resolve_cpc_account(_klant_val(r)) for _, r in active_rows.iterrows()}
+
+    # Bepaal per klant het verwachte CPC-account op basis van meerderheid van steden
+    _klant_cpc_accounts: dict[str, str] = {}
+    if local_adgroup_cpc:
+        _ca = local_adgroup_cpc.get("city_accounts", {})
+        _klant_city_map: dict[str, list[str]] = {}
+        for _, r in active_rows.iterrows():
+            _kl = _klant_val(r)
+            _ci = re.sub(r"\s*\([^)]*\)\s*$", "", str(r.get("Plaats", "")).strip()).strip().lower()
+            _klant_city_map.setdefault(_kl, []).append(_ci)
+        for _kl, _cities in _klant_city_map.items():
+            _votes: dict[str, int] = {}
+            for _ci in _cities:
+                for _acc in _ca.get(_ci, []):
+                    _votes[_acc] = _votes.get(_acc, 0) + 1
+            if _votes:
+                _klant_cpc_accounts[_kl] = max(_votes, key=_votes.get)
 
     # Unmatched CPC/pauze warnings — eenmalig vóór de loop
     for w in engine.unmatched_cpc_warnings(known_klanten):
@@ -1175,7 +1199,7 @@ def build_all(
         errors.append(f"Waarschuwing: {w}")
 
     for i, (_, row) in enumerate(sheet.iterrows()):
-        city  = str(row.get("Plaats", "")).strip()
+        city  = re.sub(r"\s*\([^)]*\)\s*$", "", str(row.get("Plaats", "")).strip()).strip()
         klant = str(row.get("Klant", "")).strip()
         if not klant or klant == "nan":
             klant = "DakPro"
@@ -1245,6 +1269,9 @@ def build_all(
         if klant not in results:
             results[klant] = {"lokaal": [], "stad": []}
 
+        # Bepaal verwacht CPC-account voor eigenaarschapswaarschuwing (local_adgroup_cpc)
+        _klant_cpc_account = _klant_cpc_accounts.get(klant, "")
+
         # Lokale campagne
         if local_decision.should_build and len(lok_df) > 0:
             if local_decision.final_status == "Paused":
@@ -1253,7 +1280,7 @@ def build_all(
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 lok_df = _apply_keyword_cpc_sheet(lok_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
             elif local_adgroup_cpc:
-                lok_df, _cpc_warns = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal")
+                lok_df, _cpc_warns = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal", _klant_cpc_account)
                 errors.extend(_cpc_warns)
             else:
                 lok_df = _apply_cpc_to_df(
@@ -1274,7 +1301,7 @@ def build_all(
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 sta_df = _apply_keyword_cpc_sheet(sta_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
             elif local_adgroup_cpc:
-                sta_df, _cpc_warns = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad")
+                sta_df, _cpc_warns = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad", _klant_cpc_account)
                 errors.extend(_cpc_warns)
             else:
                 sta_df = _apply_cpc_to_df(
