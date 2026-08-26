@@ -230,6 +230,9 @@ def _parse_threshold(raw) -> dict:
     if "altijd" in s_lower:
         return {"rule": "always"}
 
+    if "geen review" in s_lower or "geen beoordeling" in s_lower:
+        return {"rule": "no_review"}
+
     m = re.search(r"\d+", s)
     if not m:
         return {}
@@ -360,6 +363,13 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                 return usp
             return lange_raw if lange_raw else s  # fallback uit Excel
 
+        if r == "no_review":
+            review_score = (merk_info or {}).get("review_score", "").strip()
+            if not review_score:
+                return lange_raw if lange_raw else s
+            # score aanwezig → laat [ReviewHeadline]/[ReviewDescription] staan zodat _apply_eigen_placeholders ze vervangt
+            return s
+
         col_limit = _COL_CHAR_LIMITS.get(col)
 
         if r == "always" and merk_info:
@@ -474,6 +484,12 @@ def _apply_eigen_placeholders(
 
     text = text.replace("[ReviewScore]",   merk_info.get("review_score",    ""))
     text = text.replace("[JarenGarantie]", merk_info.get("jaren_garantie", ""))
+
+    rs = merk_info.get("review_score", "").strip()
+    if rs:
+        text = text.replace("[ReviewHeadline]",   f"Beoordeeld met {rs} sterren")
+        text = text.replace("[ReviewDescription]", f"beoordeeld met {rs} sterren")
+
     return text
 
 

@@ -66,13 +66,32 @@
   },
   "Dakdekker": {
     "Eigen merk": {
-      "sheet_url": "https://docs.google.com/spreadsheets/d/11FbSGdbA96v60j2JIih5w46X_3fX4tDboBPQ2VMtduE/edit?usp=sharing",
-      "sheet_name": "Testtab",
-      "lokaal_template_path": "branch_files/Dakdekker/Eigen merk/lokaal.csv",
-      "stad_template_path": "branch_files/Dakdekker/Eigen merk/stad.csv",
-      "variants_path": "branch_files/Dakdekker/Eigen merk/variants.xlsx",
-      "cpc_file_path": "branch_files/Dakdekker/Eigen merk/cpc.xlsx",
-      "pause_file_path": "branch_files/Dakdekker/Eigen merk/pause.xlsx"
+      "NL": {
+        "sheet_url": "https://docs.google.com/spreadsheets/d/11FbSGdbA96v60j2JIih5w46X_3fX4tDboBPQ2VMtduE/edit?usp=sharing",
+        "sheet_name": "Testtab",
+        "lokaal_template_path": "branch_files/Dakdekker/Eigen merk/lokaal.csv",
+        "stad_template_path": "branch_files/Dakdekker/Eigen merk/stad.csv",
+        "lokaal_laagste_path": "",
+        "stad_laagste_path": "",
+        "variants_path": "branch_files/Dakdekker/Eigen merk/variants.xlsx",
+        "cpc_file_path": "branch_files/Dakdekker/Eigen merk/cpc.xlsx",
+        "pause_file_path": "branch_files/Dakdekker/Eigen merk/pause.xlsx",
+        "template_city": "",
+        "template_company": ""
+      },
+      "BE": {
+        "sheet_url": "",
+        "sheet_name": "Testtab",
+        "lokaal_template_path": "branch_files/Dakdekker/Eigen merk/BE/lokaal_hoogste.csv",
+        "stad_template_path": "branch_files/Dakdekker/Eigen merk/BE/stad_hoogste.csv",
+        "lokaal_laagste_path": "",
+        "stad_laagste_path": "",
+        "variants_path": "branch_files/Dakdekker/Eigen merk/BE/variants.xlsx",
+        "cpc_file_path": "branch_files/Dakdekker/Eigen merk/BE/cpc.xlsx",
+        "pause_file_path": "",
+        "template_city": "",
+        "template_company": ""
+      }
     },
     "Overkoepelend merk (portaal)": {
       "sheet_url": "",
