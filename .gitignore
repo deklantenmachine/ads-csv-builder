@@ -4,5 +4,7 @@ __pycache__/
 # Advies/CPC/pauze bestanden (klantdata) uitsluiten, maar variants.xlsx meenemen
 branch_files/**/cpc.xlsx
 branch_files/**/pause.xlsx
+# Uitzondering: sjabloon CPC-bestanden die automatisch geladen moeten worden
+!branch_files/Dakdekker/Eigen merk/BE/cpc.xlsx
 # Gegenereerde output-CSV's uitsluiten (maar branch_files CSV's wel meenemen)
 !branch_files/**/*.csv

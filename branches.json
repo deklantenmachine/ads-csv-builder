@@ -65,6 +65,12 @@
     }
   },
   "Dakdekker": {
+    "_ui": {
+      "toon_uitgebreide_merk_info": true,
+      "toon_adviesbestanden": true,
+      "toon_fallback_cpc": true,
+      "toon_pauze": true
+    },
     "Eigen merk": {
       "NL": {
         "sheet_url": "https://docs.google.com/spreadsheets/d/11FbSGdbA96v60j2JIih5w46X_3fX4tDboBPQ2VMtduE/edit?usp=sharing",
@@ -80,6 +86,14 @@
         "template_company": ""
       },
       "BE": {
+        "_ui": {
+          "toon_fallback_cpc": false,
+          "toon_pauze": false,
+          "placeholder_korte_naam": "Vd Grint",
+          "placeholder_lange_naam": "Van de Grint",
+          "placeholder_review_score": "5",
+          "label_review_score": "Review score (aantal sterren)"
+        },
         "sheet_url": "",
         "sheet_name": "Testtab",
         "lokaal_template_path": "branch_files/Dakdekker/Eigen merk/BE/lokaal_hoogste.csv",

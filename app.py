@@ -109,11 +109,19 @@ with _col_edit:
 # Haal de juiste config op (land-aware of flat)
 _branch_cfg = _merk_raw.get(selected_land, {}) if _is_land_aware else _merk_raw
 
-# Branch-level UI configuratie
-_ui_cfg = _branches.get(selected_branch, {}).get("_ui", {})
+# Branch-level UI configuratie (branch-niveau samenvoegen met land-niveau, land wint)
+_ui_branch = _branches.get(selected_branch, {}).get("_ui", {})
+_ui_land   = _branch_cfg.get("_ui", {})   # land-specifiek (NL/BE) overschrijft branch-niveau
+_ui_cfg    = {**_ui_branch, **_ui_land}
 _toon_uitgebreide_merk_info = _ui_cfg.get("toon_uitgebreide_merk_info", True)
 _toon_adviesbestanden       = _ui_cfg.get("toon_adviesbestanden",        True)
 _toon_fallback_cpc          = _ui_cfg.get("toon_fallback_cpc",           True)
+_toon_pauze                 = _ui_cfg.get("toon_pauze",                  True)
+# Placeholders voor bedrijfsnaam en review score (branche-specifiek instelbaar)
+_placeholder_korte   = _ui_cfg.get("placeholder_korte_naam",   "DCN")
+_placeholder_lange   = _ui_cfg.get("placeholder_lange_naam",   "DCN Dakdekkers")
+_placeholder_review  = _ui_cfg.get("placeholder_review_score", "9,2")
+_label_review        = _ui_cfg.get("label_review_score",       "Review score")
 
 # ── Centraal CPC-blad (Schoorsteenveger) ─────────────────────────────────────
 _kw_cpc_sheet_url  = _branches.get(selected_branch, {}).get("keyword_cpc_sheet_url", "")
@@ -404,10 +412,10 @@ if eigen_merk:
     if _toon_uitgebreide_merk_info:
         col1, col2 = st.columns(2)
         with col1:
-            korte_naam     = st.text_input("Korte bedrijfsnaam", placeholder="DCN")
-            review_score   = st.text_input("Review score", placeholder="9.2")
+            korte_naam     = st.text_input("Korte bedrijfsnaam", placeholder=_placeholder_korte)
+            review_score   = st.text_input(_label_review, placeholder=_placeholder_review)
         with col2:
-            lange_naam     = st.text_input("Lange bedrijfsnaam", placeholder="DCN Dakdekkers")
+            lange_naam     = st.text_input("Lange bedrijfsnaam", placeholder=_placeholder_lange)
             jaren_garantie = st.text_input("Jaren garantie", placeholder="10")
         usp = st.text_input(
             "Overige USP (leeg = fallback uit variantenbestand)",
@@ -529,15 +537,21 @@ if _toon_adviesbestanden:
         "Upload het CPC-adviesbestand en/of het pauzeringsbestand. "
         "De bestanden worden herkend op inhoud, niet op bestandsnaam."
     )
-    col_cpc, col_pause = st.columns(2)
+    if _toon_pauze:
+        col_cpc, col_pause = st.columns(2)
+    else:
+        col_cpc = st.container()
     with col_cpc:
         cpc_file = st.file_uploader(
             "CPC-adviesbestand (.xlsx)", type="xlsx", key="cpc_file"
         )
-    with col_pause:
-        pause_file = st.file_uploader(
-            "Pauzeringen-/beëindigingenbestand (.xlsx)", type="xlsx", key="pause_file"
-        )
+    if _toon_pauze:
+        with col_pause:
+            pause_file = st.file_uploader(
+                "Pauzeringen-/beëindigingenbestand (.xlsx)", type="xlsx", key="pause_file"
+            )
+    else:
+        pause_file = None
 else:
     cpc_file   = None
     pause_file = None
