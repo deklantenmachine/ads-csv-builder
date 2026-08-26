@@ -324,29 +324,76 @@ def _has_local_adgroup_cpc_structure(wb_data: dict[str, pd.DataFrame]) -> bool:
     return {"Adv.groep Max CPC", "Plaats", "Type (stad_lokaal)", "Dienst (adv. groep)"}.issubset(cols)
 
 
+_NIEUWE_PLAATS = "nieuwe plaats"
+
+
 def parse_local_adgroup_cpc(wb_data: dict[str, pd.DataFrame]) -> dict:
     """
-    Parst het 'Adv. groep' tabblad naar een lookup-dict.
-    Key: (city.lower(), type.lower(), dienst.lower())
-    Value: cpc in centen (int)
+    Parst 'Adv. groep' en 'Zoekwoorden' tabbladen naar een gecombineerd CPC-object.
+
+    Retourneert dict met:
+      "adgroup":          {(city_lower, type_lower, dienst_lower): cpc_cents}
+      "adgroup_fallback": {(type_lower, dienst_lower): cpc_cents}  ← 'Nieuwe plaats' rijen
+      "keyword":          {(keyword_lower, criterion_lower): cpc_cents}
+      "keyword_fallback": {(kw_no_city_lower, criterion_lower): cpc_cents}  ← 'Nieuwe plaats' kw's
+      "city_accounts":    {city_lower: set of account names}  ← voor eigenaarschapswaarschuwingen
     """
-    df = wb_data.get("Adv. groep")
-    if df is None:
-        return {}
-    lookup: dict = {}
-    for _, row in df.iterrows():
-        city   = str(row.get("Plaats", "")).strip().lower()
-        typ    = str(row.get("Type (stad_lokaal)", "")).strip().lower()
-        dienst = str(row.get("Dienst (adv. groep)", "")).strip().lower()
-        raw    = row.get("Adv.groep Max CPC")
-        if not city or not dienst or pd.isna(raw):
-            continue
+    def _to_cents(raw) -> int | None:
+        if pd.isna(raw):
+            return None
         try:
-            cpc_cents = round(float(str(raw).replace(",", ".")) * 100)
+            return round(float(str(raw).replace(",", ".")) * 100)
         except (ValueError, TypeError):
-            continue
-        lookup[(city, typ, dienst)] = cpc_cents
-    return lookup
+            return None
+
+    adgroup:          dict = {}
+    adgroup_fallback: dict = {}
+    keyword:          dict = {}
+    keyword_fallback: dict = {}
+    city_accounts:    dict = {}
+
+    # ── Adv. groep ──────────────────────────────────────────────────────────
+    df_ag = wb_data.get("Adv. groep")
+    if df_ag is not None:
+        for _, row in df_ag.iterrows():
+            account = str(row.get("Account", "")).strip()
+            city    = str(row.get("Plaats", "")).strip()
+            typ     = str(row.get("Type (stad_lokaal)", "")).strip().lower()
+            dienst  = str(row.get("Dienst (adv. groep)", "")).strip().lower()
+            cents   = _to_cents(row.get("Adv.groep Max CPC"))
+            if not city or not dienst or cents is None:
+                continue
+            city_l = city.lower()
+            if city_l == _NIEUWE_PLAATS:
+                adgroup_fallback[(typ, dienst)] = cents
+            else:
+                adgroup[(city_l, typ, dienst)] = cents
+                if city_l not in city_accounts:
+                    city_accounts[city_l] = set()
+                city_accounts[city_l].add(account)
+
+    # ── Zoekwoorden ─────────────────────────────────────────────────────────
+    df_kw = wb_data.get("Zoekwoorden")
+    if df_kw is not None:
+        for _, row in df_kw.iterrows():
+            kw        = str(row.get("Keyword", "")).strip().lower()
+            criterion = str(row.get("Criterion Type", "")).strip().lower()
+            cents     = _to_cents(row.get("Max CPC"))
+            ag_name   = str(row.get("Ad Group", "")).strip().lower()
+            if not kw or not criterion or cents is None:
+                continue
+            if _NIEUWE_PLAATS in kw or _NIEUWE_PLAATS in ag_name:
+                keyword_fallback[(kw, criterion)] = cents
+            else:
+                keyword[(kw, criterion)] = cents
+
+    return {
+        "adgroup":          adgroup,
+        "adgroup_fallback": adgroup_fallback,
+        "keyword":          keyword,
+        "keyword_fallback": keyword_fallback,
+        "city_accounts":    city_accounts,
+    }
 
 
 def _has_pause_structure(wb_data: dict[str, pd.DataFrame]) -> bool:

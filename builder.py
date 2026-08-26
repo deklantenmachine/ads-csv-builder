@@ -937,18 +937,37 @@ def _apply_cpc_to_df(
 
 def _apply_local_adgroup_cpc(
     df:       pd.DataFrame,
-    lookup:   dict,
+    cpc_data: dict,
     city:     str,
     cpc_type: str,   # "stad" of "lokaal"
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, list[str]]:
     """
-    Past per-advertentiegroep CPC's toe vanuit het lokale adgroup-CPC-bestand (BE Dakdekker).
-    Dienst wordt bepaald door de plaatsnaam uit de Ad Group naam te verwijderen.
+    Past CPC's toe uit het lokale adgroup/keyword-CPC-bestand (BE Dakdekker).
+    Zoekwoorden zijn leidend boven advertentiegroep-CPC's.
+    Retourneert (df, warnings).
     """
-    if not lookup:
-        return df
+    warnings: list[str] = []
+    if not cpc_data:
+        return df, warnings
+
+    adgroup          = cpc_data.get("adgroup",          {})
+    adgroup_fallback = cpc_data.get("adgroup_fallback", {})
+    keyword_lkp      = cpc_data.get("keyword",          {})
+    keyword_fallback = cpc_data.get("keyword_fallback", {})
+    city_accounts    = cpc_data.get("city_accounts",    {})
+
+    city_lower   = city.strip().lower()
+    type_lower   = cpc_type.lower()
+
+    # Eigenaarschapswaarschuwing: stad staat bij een ander account dan verwacht
+    accs = city_accounts.get(city_lower, set())
+    if len(accs) > 1:
+        warnings.append(
+            f"⚠️ {city}: staat bij meerdere accounts in het CPC-bestand ({', '.join(sorted(accs))}). "
+            f"Controleer de CPC's handmatig in Google Ads Editor."
+        )
+
     df = df.copy()
-    city_lower = city.strip().lower()
 
     def _filled(col):
         if col not in df.columns:
@@ -957,24 +976,43 @@ def _apply_local_adgroup_cpc(
 
     has_ad_group = _filled("Ad Group")
     has_keyword  = _filled("Keyword")
+    has_campaign = _filled("Campaign")
 
     for idx in df.index:
         if not has_ad_group[idx]:
             continue
+
         ag_name = str(df.at[idx, "Ad Group"]).strip()
-        # Haal dienst op door plaatsnaam te verwijderen (bijv. "Dakwerken Lanklaar" → "dakwerken")
+        # Dienst = ad group naam zonder plaatsnaam (bijv. "Dakwerken Lanklaar" → "dakwerken")
         dienst = ag_name.lower().replace(city_lower, "").strip()
-        key = (city_lower, cpc_type.lower(), dienst)
-        cpc_cents = lookup.get(key)
-        if cpc_cents is None:
-            continue
+
         if has_keyword[idx]:
-            if "Max CPC" in df.columns:
-                df.at[idx, "Max CPC"] = _cents_to_str(cpc_cents)
+            # ── Zoekwoord-rij: keyword-lookup is leidend ──────────────────
+            kw        = str(df.at[idx, "Keyword"]).strip().lower()
+            criterion = ""
+            if "Criterion Type" in df.columns:
+                criterion = str(df.at[idx, "Criterion Type"]).strip().lower()
+
+            cents = keyword_lkp.get((kw, criterion))
+            if cents is None:
+                # Fallback: vervang plaatsnaam door "nieuwe plaats" in keyword
+                kw_fb = kw.replace(city_lower, "nieuwe plaats")
+                cents = keyword_fallback.get((kw_fb, criterion))
+
+            if cents is not None and "Max CPC" in df.columns:
+                df.at[idx, "Max CPC"] = _cents_to_str(cents)
+
         else:
-            if "Default max. CPC" in df.columns:
-                df.at[idx, "Default max. CPC"] = _cents_to_str(cpc_cents)
-    return df
+            # ── Advertentiegroep-rij: adgroup-lookup ──────────────────────
+            cents = adgroup.get((city_lower, type_lower, dienst))
+            if cents is None:
+                # Fallback: "Nieuwe plaats"
+                cents = adgroup_fallback.get((type_lower, dienst))
+
+            if cents is not None and "Default max. CPC" in df.columns:
+                df.at[idx, "Default max. CPC"] = _cents_to_str(cents)
+
+    return df, warnings
 
 
 def _apply_keyword_cpc_sheet(
@@ -1191,7 +1229,8 @@ def build_all(
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 lok_df = _apply_keyword_cpc_sheet(lok_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
             elif local_adgroup_cpc:
-                lok_df = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal")
+                lok_df, _cpc_warns = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal")
+                errors.extend(_cpc_warns)
             else:
                 lok_df = _apply_cpc_to_df(
                     lok_df,
@@ -1211,7 +1250,8 @@ def build_all(
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 sta_df = _apply_keyword_cpc_sheet(sta_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
             elif local_adgroup_cpc:
-                sta_df = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad")
+                sta_df, _cpc_warns = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad")
+                errors.extend(_cpc_warns)
             else:
                 sta_df = _apply_cpc_to_df(
                     sta_df,

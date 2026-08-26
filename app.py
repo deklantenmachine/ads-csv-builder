@@ -613,9 +613,17 @@ if cpc_file or _bc_cpc_bytes:
 
     elif file_type == AdviceFileType.CPC_ADGROUP_LOCAL:
         from advice_parser import parse_local_adgroup_cpc as _parse_local_cpc
-        _local_lookup = _parse_local_cpc(wb_data)
-        st.success(f"CPC-adviesbestand geladen: **{file_name}** ({len(_local_lookup):,} adv.groep-regels)")
-        st.session_state.local_adgroup_cpc = _local_lookup
+        _local_data = _parse_local_cpc(wb_data)
+        _n_ag  = len(_local_data.get("adgroup", {}))
+        _n_kw  = len(_local_data.get("keyword", {}))
+        _n_fb  = len(_local_data.get("adgroup_fallback", {}))
+        _n_acc = len(set(a for accs in _local_data.get("city_accounts", {}).values() for a in accs))
+        st.success(
+            f"CPC-adviesbestand geladen: **{file_name}** — "
+            f"{_n_ag:,} adv.groep-regels · {_n_kw:,} zoekwoord-CPC's · "
+            f"{_n_fb} fallback-diensten · {_n_acc} account(s)"
+        )
+        st.session_state.local_adgroup_cpc = _local_data
         st.session_state.cpc_import        = None
         st.session_state.cpc_confirmed     = True
 
