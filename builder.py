@@ -968,6 +968,10 @@ def _apply_local_adgroup_cpc(
         )
 
     df = df.copy()
+    # Zorg dat CPC-kolommen string kunnen opslaan (float64 geeft dtype-conflict)
+    for _cpc_col in ("Max CPC", "Default max. CPC"):
+        if _cpc_col in df.columns:
+            df[_cpc_col] = df[_cpc_col].astype(object)
 
     def _filled(col):
         if col not in df.columns:
@@ -976,7 +980,6 @@ def _apply_local_adgroup_cpc(
 
     has_ad_group = _filled("Ad Group")
     has_keyword  = _filled("Keyword")
-    has_campaign = _filled("Campaign")
 
     for idx in df.index:
         if not has_ad_group[idx]:
@@ -1013,6 +1016,25 @@ def _apply_local_adgroup_cpc(
                 df.at[idx, "Default max. CPC"] = _cents_to_str(cents)
 
     return df, warnings
+
+
+def _local_adgroup_cpc_preview(cpc_data: dict, city: str, cpc_type: str) -> str:
+    """Geeft een representatieve CPC-waarde terug voor dry-run weergave."""
+    if not cpc_data:
+        return "—"
+    adgroup  = cpc_data.get("adgroup",          {})
+    fallback = cpc_data.get("adgroup_fallback", {})
+    city_l   = city.strip().lower()
+    type_l   = cpc_type.strip().lower()
+    # Pak de eerste dienst-CPC voor deze stad/type
+    for (c, t, _d), cents in adgroup.items():
+        if c == city_l and t == type_l:
+            return f"€{cents/100:.2f}+"
+    # Fallback
+    for (t, _d), cents in fallback.items():
+        if t == type_l:
+            return f"€{cents/100:.2f}+"
+    return "—"
 
 
 def _apply_keyword_cpc_sheet(
@@ -1195,8 +1217,10 @@ def build_all(
                 "Lokaal":       "gepauzeerd" if (local_decision.should_build and local_decision.final_status == "Paused")
                                 else ("overgeslagen" if not local_decision.should_build else "normaal"),
                 "Lokaal reden": next((getattr(r, "status_reason", "") for r in local_decision.matched_rules if getattr(r, "status_reason", "")), ""),
-                "CPC stad":     f"€{stad_decision.campaign_cpc_cents/100:.2f}" if stad_decision.campaign_cpc_cents else "—",
-                "CPC lokaal":   f"€{local_decision.campaign_cpc_cents/100:.2f}" if local_decision.campaign_cpc_cents else "—",
+                "CPC stad":     f"€{stad_decision.campaign_cpc_cents/100:.2f}" if stad_decision.campaign_cpc_cents
+                                else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "stad") if local_adgroup_cpc else "—",
+                "CPC lokaal":   f"€{local_decision.campaign_cpc_cents/100:.2f}" if local_decision.campaign_cpc_cents
+                                else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "lokaal") if local_adgroup_cpc else "—",
                 "Waarschuwingen": "; ".join(stad_decision.warnings + local_decision.warnings),
             })
             if progress_cb:
