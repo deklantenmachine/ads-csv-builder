@@ -935,6 +935,48 @@ def _apply_cpc_to_df(
     return df
 
 
+def _apply_local_adgroup_cpc(
+    df:       pd.DataFrame,
+    lookup:   dict,
+    city:     str,
+    cpc_type: str,   # "stad" of "lokaal"
+) -> pd.DataFrame:
+    """
+    Past per-advertentiegroep CPC's toe vanuit het lokale adgroup-CPC-bestand (BE Dakdekker).
+    Dienst wordt bepaald door de plaatsnaam uit de Ad Group naam te verwijderen.
+    """
+    if not lookup:
+        return df
+    df = df.copy()
+    city_lower = city.strip().lower()
+
+    def _filled(col):
+        if col not in df.columns:
+            return pd.Series(False, index=df.index)
+        return df[col].notna() & (df[col].astype(str).str.strip() != "")
+
+    has_ad_group = _filled("Ad Group")
+    has_keyword  = _filled("Keyword")
+
+    for idx in df.index:
+        if not has_ad_group[idx]:
+            continue
+        ag_name = str(df.at[idx, "Ad Group"]).strip()
+        # Haal dienst op door plaatsnaam te verwijderen (bijv. "Dakwerken Lanklaar" → "dakwerken")
+        dienst = ag_name.lower().replace(city_lower, "").strip()
+        key = (city_lower, cpc_type.lower(), dienst)
+        cpc_cents = lookup.get(key)
+        if cpc_cents is None:
+            continue
+        if has_keyword[idx]:
+            if "Max CPC" in df.columns:
+                df.at[idx, "Max CPC"] = _cents_to_str(cpc_cents)
+        else:
+            if "Default max. CPC" in df.columns:
+                df.at[idx, "Default max. CPC"] = _cents_to_str(cpc_cents)
+    return df
+
+
 def _apply_keyword_cpc_sheet(
     df:           pd.DataFrame,
     cpc_sheet,    # KeywordCpcSheet
@@ -1013,6 +1055,7 @@ def build_all(
     template_company:     str | None = None,
     template_price:       str | None = None,
     keyword_cpc_sheet=None,    # KeywordCpcSheet | None — centraal CPC-blad (Schoorsteenveger)
+    local_adgroup_cpc: dict | None = None,  # BE Dakdekker: {(city, type, dienst): cents}
     land:                 str = "NL",  # "NL" of "BE" — alleen gebruikt met keyword_cpc_sheet
     merktype_cpc:         str = "",    # merktype-string zoals in CPC-blad
     is_portaal:           bool = False, # voor account-vertaling in keyword_cpc_sheet
@@ -1147,6 +1190,8 @@ def build_all(
             if keyword_cpc_sheet is not None:
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 lok_df = _apply_keyword_cpc_sheet(lok_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
+            elif local_adgroup_cpc:
+                lok_df = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal")
             else:
                 lok_df = _apply_cpc_to_df(
                     lok_df,
@@ -1165,6 +1210,8 @@ def build_all(
             if keyword_cpc_sheet is not None:
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 sta_df = _apply_keyword_cpc_sheet(sta_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
+            elif local_adgroup_cpc:
+                sta_df = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad")
             else:
                 sta_df = _apply_cpc_to_df(
                     sta_df,

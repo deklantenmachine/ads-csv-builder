@@ -17,10 +17,11 @@ import pandas as pd
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class AdviceFileType(str, Enum):
-    CPC_ADVICE   = "CPC_ADVICE"
-    PAUSE_ADVICE = "PAUSE_ADVICE"
-    UNKNOWN      = "UNKNOWN"
-    AMBIGUOUS    = "AMBIGUOUS"
+    CPC_ADVICE        = "CPC_ADVICE"
+    CPC_ADGROUP_LOCAL = "CPC_ADGROUP_LOCAL"   # BE Dakdekker formaat: Adv. groep + Zoekwoorden
+    PAUSE_ADVICE      = "PAUSE_ADVICE"
+    UNKNOWN           = "UNKNOWN"
+    AMBIGUOUS         = "AMBIGUOUS"
 
 
 class CampaignType(str, Enum):
@@ -315,6 +316,39 @@ def _has_cpc_structure(wb_data: dict[str, pd.DataFrame]) -> bool:
     return _CPC_REQUIRED_COLS.issubset(cols)
 
 
+def _has_local_adgroup_cpc_structure(wb_data: dict[str, pd.DataFrame]) -> bool:
+    df = wb_data.get("Adv. groep")
+    if df is None or df.empty:
+        return False
+    cols = {str(c).strip() for c in df.columns}
+    return {"Adv.groep Max CPC", "Plaats", "Type (stad_lokaal)", "Dienst (adv. groep)"}.issubset(cols)
+
+
+def parse_local_adgroup_cpc(wb_data: dict[str, pd.DataFrame]) -> dict:
+    """
+    Parst het 'Adv. groep' tabblad naar een lookup-dict.
+    Key: (city.lower(), type.lower(), dienst.lower())
+    Value: cpc in centen (int)
+    """
+    df = wb_data.get("Adv. groep")
+    if df is None:
+        return {}
+    lookup: dict = {}
+    for _, row in df.iterrows():
+        city   = str(row.get("Plaats", "")).strip().lower()
+        typ    = str(row.get("Type (stad_lokaal)", "")).strip().lower()
+        dienst = str(row.get("Dienst (adv. groep)", "")).strip().lower()
+        raw    = row.get("Adv.groep Max CPC")
+        if not city or not dienst or pd.isna(raw):
+            continue
+        try:
+            cpc_cents = round(float(str(raw).replace(",", ".")) * 100)
+        except (ValueError, TypeError):
+            continue
+        lookup[(city, typ, dienst)] = cpc_cents
+    return lookup
+
+
 def _has_pause_structure(wb_data: dict[str, pd.DataFrame]) -> bool:
     for sheet_name in _PAUSE_POSSIBLE_SHEETS:
         df = wb_data.get(sheet_name)
@@ -335,8 +369,9 @@ def detect_advice_file_type(
     """
     wb_data = _load_workbook(file_bytes)
 
-    has_cpc   = _has_cpc_structure(wb_data)
-    has_pause = _has_pause_structure(wb_data)
+    has_cpc        = _has_cpc_structure(wb_data)
+    has_pause      = _has_pause_structure(wb_data)
+    has_local_cpc  = _has_local_adgroup_cpc_structure(wb_data)
 
     if has_cpc and has_pause:
         file_type = AdviceFileType.AMBIGUOUS
@@ -344,6 +379,8 @@ def detect_advice_file_type(
         file_type = AdviceFileType.CPC_ADVICE
     elif has_pause:
         file_type = AdviceFileType.PAUSE_ADVICE
+    elif has_local_cpc:
+        file_type = AdviceFileType.CPC_ADGROUP_LOCAL
     else:
         file_type = AdviceFileType.UNKNOWN
 

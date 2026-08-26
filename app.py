@@ -611,6 +611,14 @@ if cpc_file or _bc_cpc_bytes:
         st.session_state.cpc_import    = None
         st.session_state.cpc_confirmed = False
 
+    elif file_type == AdviceFileType.CPC_ADGROUP_LOCAL:
+        from advice_parser import parse_local_adgroup_cpc as _parse_local_cpc
+        _local_lookup = _parse_local_cpc(wb_data)
+        st.success(f"CPC-adviesbestand geladen: **{file_name}** ({len(_local_lookup):,} adv.groep-regels)")
+        st.session_state.local_adgroup_cpc = _local_lookup
+        st.session_state.cpc_import        = None
+        st.session_state.cpc_confirmed     = True
+
     else:  # CPC_ADVICE
         cpc_import = parse_cpc_advice(file_bytes, file_name)
         summary = cpc_import.summary
@@ -655,8 +663,9 @@ if cpc_file or _bc_cpc_bytes:
                         _save_branches(_branches)
                         st.success(f"Opgeslagen als standaard: {saved}")
 else:
-    st.session_state.cpc_import    = None
-    st.session_state.cpc_confirmed = False
+    st.session_state.cpc_import       = None
+    st.session_state.local_adgroup_cpc = None
+    st.session_state.cpc_confirmed    = False
 
 
 # Pauzeringsbestand verwerken
@@ -881,6 +890,7 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 template_company       = _branch_cfg.get("template_company") or None,
                 template_price         = klant_prijs,
                 keyword_cpc_sheet      = _active_kw_cpc_sheet,
+                local_adgroup_cpc      = st.session_state.get("local_adgroup_cpc"),
                 land                   = selected_land,
                 merktype_cpc           = _merktype_cpc,
                 is_portaal             = not eigen_merk,

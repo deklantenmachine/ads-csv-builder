@@ -94,7 +94,7 @@
           "placeholder_review_score": "5",
           "label_review_score": "Review score (aantal sterren)"
         },
-        "sheet_url": "",
+        "sheet_url": "https://docs.google.com/spreadsheets/d/1SgQl0m3ylJGrA-VVuhwlyVYcmAu1XzIZWpfvKYrNiLo/edit?usp=sharing",
         "sheet_name": "Testtab",
         "lokaal_template_path": "branch_files/Dakdekker/Eigen merk/BE/lokaal_hoogste.csv",
         "stad_template_path": "branch_files/Dakdekker/Eigen merk/BE/stad_hoogste.csv",
