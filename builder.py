@@ -491,8 +491,8 @@ def _apply_eigen_placeholders(
 
     rs = merk_info.get("review_score", "").strip()
     if rs:
-        text = text.replace("[ReviewHeadline]",    f"Beoordeeld met {rs} sterren")
-        text = text.replace("[ReviewDescription]",  f"beoordeeld met {rs} sterren")
+        text = text.replace("[ReviewHeadline]",    f"Beoordeeld Met {rs} Sterren")
+        text = text.replace("[ReviewDescription]",  f"{rs} sterren")
     else:
         # Geen score: lege string zodat placeholder niet letterlijk in de output staat
         text = text.replace("[ReviewHeadline]",    "")
