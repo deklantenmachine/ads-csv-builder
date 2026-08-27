@@ -1232,7 +1232,8 @@ def build_all(
                 continue
 
         # ── Rules engine: beslissingen per campagnetype ───────────────────────
-        stad_excluded = city.lower() in EXCLUDED_STAD_CITIES
+        stad_excluded  = city.lower() in EXCLUDED_STAD_CITIES
+        lokaal_excluded = str(row.get("Locatie", "")).strip().lower() == "niet in data"
         cpc_account = _resolve_cpc_account(klant)  # klantnaam → adviesbestand-accountnaam
 
         stad_decision  = engine.get_city_decision(cpc_account, city)
@@ -1257,10 +1258,10 @@ def build_all(
                 "Stad":         "gepauzeerd" if (stad_decision.should_build and stad_decision.final_status == "Paused" and not stad_excluded)
                                 else ("overgeslagen" if (not stad_decision.should_build or stad_excluded) else "normaal"),
                 "Stad reden":   stad_skip_reason or next((getattr(r, "status_reason", "") for r in stad_decision.matched_rules if getattr(r, "status_reason", "")), ""),
-                "Lokaal":       "overgeslagen" if stad_excluded
+                "Lokaal":       "overgeslagen" if lokaal_excluded
                                 else ("gepauzeerd" if (local_decision.should_build and local_decision.final_status == "Paused")
                                 else ("overgeslagen" if not local_decision.should_build else "normaal")),
-                "Lokaal reden": "geen locatiedata" if stad_excluded
+                "Lokaal reden": "geen locatiedata" if lokaal_excluded
                                 else next((getattr(r, "status_reason", "") for r in local_decision.matched_rules if getattr(r, "status_reason", "")), ""),
                 "CPC stad":     f"€{stad_decision.campaign_cpc_cents/100:.2f}" if stad_decision.campaign_cpc_cents
                                 else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "stad") if local_adgroup_cpc else "—",
@@ -1298,7 +1299,9 @@ def build_all(
             results[klant] = {"lokaal": [], "stad": []}
 
         # Lokale campagne
-        if local_decision.should_build and len(lok_df) > 0:
+        if lokaal_excluded:
+            errors.append(f"Info: {city} (lokaal) overgeslagen — geen locatiedata (Locatie = 'Niet in data').")
+        elif local_decision.should_build and len(lok_df) > 0:
             if local_decision.final_status == "Paused":
                 lok_df = _force_campaign_status(lok_df, "Paused")
             if keyword_cpc_sheet is not None:
