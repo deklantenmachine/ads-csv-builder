@@ -286,7 +286,7 @@ def load_variants(xlsx_path: str) -> dict:
         # normaliseer de lookup-sleutel (oud formaat: 'Plaats'/DCN, nieuw: [Plaats]/[Klantnaam])
         key = korte
         key = key.replace("[Plaats]", TEMPLATE_CITY)           # nieuw: [Plaats] → Groningen
-        key = re.sub(r"'?Plaats'?", TEMPLATE_CITY, key)        # oud: 'Plaats' → Groningen
+        key = key.replace("'Plaats'", TEMPLATE_CITY)           # oud: 'Plaats' → Groningen
         key = key.replace("[Klantnaam]", "[Bedrijfsnaam]")     # nieuw: [Klantnaam] → [Bedrijfsnaam]
         key = key.replace(TEMPLATE_COMPANY, "[Bedrijfsnaam]")  # oud: DCN → [Bedrijfsnaam]
         key = key.lower()
