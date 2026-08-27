@@ -1257,9 +1257,11 @@ def build_all(
                 "Stad":         "gepauzeerd" if (stad_decision.should_build and stad_decision.final_status == "Paused" and not stad_excluded)
                                 else ("overgeslagen" if (not stad_decision.should_build or stad_excluded) else "normaal"),
                 "Stad reden":   stad_skip_reason or next((getattr(r, "status_reason", "") for r in stad_decision.matched_rules if getattr(r, "status_reason", "")), ""),
-                "Lokaal":       "gepauzeerd" if (local_decision.should_build and local_decision.final_status == "Paused")
-                                else ("overgeslagen" if not local_decision.should_build else "normaal"),
-                "Lokaal reden": next((getattr(r, "status_reason", "") for r in local_decision.matched_rules if getattr(r, "status_reason", "")), ""),
+                "Lokaal":       "overgeslagen" if stad_excluded
+                                else ("gepauzeerd" if (local_decision.should_build and local_decision.final_status == "Paused")
+                                else ("overgeslagen" if not local_decision.should_build else "normaal")),
+                "Lokaal reden": "geen locatiedata" if stad_excluded
+                                else next((getattr(r, "status_reason", "") for r in local_decision.matched_rules if getattr(r, "status_reason", "")), ""),
                 "CPC stad":     f"€{stad_decision.campaign_cpc_cents/100:.2f}" if stad_decision.campaign_cpc_cents
                                 else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "stad") if local_adgroup_cpc else "—",
                 "CPC lokaal":   f"€{local_decision.campaign_cpc_cents/100:.2f}" if local_decision.campaign_cpc_cents
