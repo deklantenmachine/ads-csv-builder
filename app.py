@@ -390,6 +390,7 @@ if st.session_state.results is not None:
                                 variants_path=vp,
                                 dry_run=False,
                                 progress_cb=_real_progress_cb,
+                                cpc_city_overrides=st.session_state.get("cpc_overrides") or {},
                             )
                         except Exception as exc:
                             st.error(f"Fout bij verwerken: {exc}")
@@ -939,7 +940,6 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 land                   = selected_land,
                 merktype_cpc           = _merktype_cpc,
                 is_portaal             = not eigen_merk,
-                cpc_city_overrides     = st.session_state.get("cpc_overrides") or {},
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs
@@ -952,9 +952,10 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 merged, errors = build_all(
                     lok_path, sta_path,
                     **_shared_kwargs,
-                    variants_path = var_path,
-                    dry_run       = dry_run,
-                    progress_cb   = progress_cb,
+                    variants_path      = var_path,
+                    dry_run            = dry_run,
+                    progress_cb        = progress_cb,
+                    cpc_city_overrides = st.session_state.get("cpc_overrides") or {},
                 )
             except Exception as exc:
                 st.error(f"Fout bij verwerken: {exc}")
