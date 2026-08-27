@@ -553,7 +553,8 @@ with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
                         _dv_str = str(_dv)
                         _dv_key = _dv_str.lower()
                         _in_vars = _dv_key in _vars
-                        _result = _av(_dv_str, "Alken", _vars, merk_info, col=_dc)
+                        _res_var = _av(_dv_str, "Alken", _vars, merk_info, col=_dc)
+                        _result  = _aet(_res_var, "Alken", merk_info, None, col=_dc)
                         st.write(f"  - `{_dv_str}` → key in variants: `{_in_vars}` → uitkomst: **`{_result}`**")
 
 st.header("2. Sjabloon-bestanden")
