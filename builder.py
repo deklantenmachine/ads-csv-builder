@@ -230,7 +230,7 @@ def _parse_threshold(raw) -> dict:
     if "altijd" in s_lower:
         return {"rule": "always"}
 
-    if "geen review" in s_lower or "geen beoordeling" in s_lower:
+    if "geen review" in s_lower or "geen beoordeling" in s_lower or "geen cijfer" in s_lower or "geen sterren" in s_lower:
         return {"rule": "no_review"}
 
     m = re.search(r"\d+", s)
@@ -425,7 +425,10 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
                     result = _apply_portaal_values(result, merk_info)
                 else:
                     result = lange_raw
-                return _case_replace(result, TEMPLATE_CITY, city)
+                result = _case_replace(result, TEMPLATE_CITY, city)
+                if merk_info:
+                    result = _apply_eigen_placeholders(result, merk_info, city)
+                return result
 
     # geen variant match: standaard plaatsnaam-vervanging
     result = _case_replace(s, TEMPLATE_CITY, city)
