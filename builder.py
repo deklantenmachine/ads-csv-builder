@@ -359,16 +359,15 @@ def _apply_variant(val: str, city: str, variants: dict, merk_info: dict | None =
 
         if r == "usp" and merk_info:
             usp = merk_info.get("usp", "").strip()
-            if usp:
-                return usp
-            return lange_raw if lange_raw else s  # fallback uit Excel
+            result = usp if usp else (lange_raw if lange_raw else s)
+            return _apply_eigen_placeholders(result, merk_info, city)
 
         if r == "no_review":
             review_score = (merk_info or {}).get("review_score", "").strip()
-            if not review_score:
-                return lange_raw if lange_raw else s
-            # score aanwezig → laat [ReviewHeadline]/[ReviewDescription] staan zodat _apply_eigen_placeholders ze vervangt
-            return s
+            result = s if review_score else (lange_raw if lange_raw else s)
+            if merk_info:
+                result = _apply_eigen_placeholders(result, merk_info, city)
+            return result
 
         col_limit = _COL_CHAR_LIMITS.get(col)
 
