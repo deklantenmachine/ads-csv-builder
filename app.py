@@ -386,7 +386,10 @@ if st.session_state.results is not None:
                             with open(vp, "wb") as f: f.write(files["variants"])
                         try:
                             real_merged, real_errors = build_all(
-                                lp, sp, **kwargs,
+                                lp, sp, **{**kwargs,
+                                    "merk_info": merk_info if eigen_merk else None,
+                                    "portaal_klantnaam": portaal_klantnaam.strip() if not eigen_merk else None,
+                                },
                                 variants_path=vp,
                                 dry_run=False,
                                 progress_cb=_real_progress_cb,
