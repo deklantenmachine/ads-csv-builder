@@ -385,10 +385,13 @@ if st.session_state.results is not None:
                             vp = os.path.join(tmp2, "variants.xlsx")
                             with open(vp, "wb") as f: f.write(files["variants"])
                         try:
+                            _ui_eigen_merk        = st.session_state.get("_ui_eigen_merk", False)
+                            _ui_merk_info         = st.session_state.get("_ui_merk_info")
+                            _ui_portaal_klantnaam = st.session_state.get("_ui_portaal_klantnaam", "")
                             real_merged, real_errors = build_all(
                                 lp, sp, **{**kwargs,
-                                    "merk_info": merk_info if eigen_merk else None,
-                                    "portaal_klantnaam": portaal_klantnaam.strip() if not eigen_merk else None,
+                                    "merk_info": _ui_merk_info if _ui_eigen_merk else None,
+                                    "portaal_klantnaam": _ui_portaal_klantnaam.strip() if not _ui_eigen_merk else None,
                                 },
                                 variants_path=vp,
                                 dry_run=False,
@@ -496,6 +499,12 @@ else:
             portaal_klantnaam = st.text_input("Klantnaam campagne", placeholder="Multi-Reiniging Service")
         with col2:
             klant_prijs = st.text_input("Prijs (bijv. €59,50)", placeholder="€59,50") or None
+
+# Sla huidige UI-waarden op zodat de "Nu echt bouwen" knop ze kan lezen
+# (die knop wordt eerder in het script gerenderd, vóórdat deze variabelen bestaan)
+st.session_state["_ui_eigen_merk"]        = eigen_merk
+st.session_state["_ui_merk_info"]         = merk_info
+st.session_state["_ui_portaal_klantnaam"] = portaal_klantnaam
 
 with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
     import tempfile as _tf, io as _io
