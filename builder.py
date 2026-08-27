@@ -935,6 +935,26 @@ def _apply_cpc_to_df(
     return df
 
 
+def _local_adgroup_account_warnings(cpc_data: dict | None, city: str, klant_account: str) -> list[str]:
+    """Geeft eigenaarschapswaarschuwingen voor de dry-run (zelfde logica als in _apply_local_adgroup_cpc)."""
+    if not cpc_data:
+        return []
+    city_accounts = cpc_data.get("city_accounts", {})
+    accs = city_accounts.get(city.strip().lower(), set())
+    if klant_account and accs and klant_account not in accs:
+        return [
+            f"⚠️ {city}: staat in het CPC-bestand bij {', '.join(sorted(accs))} "
+            f"maar wordt gebouwd voor '{klant_account}'. "
+            f"Controleer de CPC's handmatig in Google Ads Editor."
+        ]
+    if len(accs) > 1:
+        return [
+            f"⚠️ {city}: staat bij meerdere accounts in het CPC-bestand "
+            f"({', '.join(sorted(accs))}). Controleer de CPC's handmatig in Google Ads Editor."
+        ]
+    return []
+
+
 def _apply_local_adgroup_cpc(
     df:           pd.DataFrame,
     cpc_data:     dict,
@@ -960,19 +980,7 @@ def _apply_local_adgroup_cpc(
     city_lower   = city.strip().lower()
     type_lower   = cpc_type.lower()
 
-    # Eigenaarschapswaarschuwing: stad bij ander of meerdere accounts dan verwacht
-    accs = city_accounts.get(city_lower, set())
-    if klant_account and accs and klant_account not in accs:
-        warnings.append(
-            f"⚠️ {city}: staat in het CPC-bestand bij {', '.join(sorted(accs))} "
-            f"maar wordt gebouwd voor '{klant_account}'. "
-            f"Controleer de CPC's handmatig in Google Ads Editor."
-        )
-    elif len(accs) > 1:
-        warnings.append(
-            f"⚠️ {city}: staat bij meerdere accounts in het CPC-bestand ({', '.join(sorted(accs))}). "
-            f"Controleer de CPC's handmatig in Google Ads Editor."
-        )
+    warnings.extend(_local_adgroup_account_warnings(cpc_data, city, klant_account))
 
     df = df.copy()
     # Zorg dat CPC-kolommen string kunnen opslaan (float64 geeft dtype-conflict)
@@ -1245,7 +1253,10 @@ def build_all(
                                 else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "stad") if local_adgroup_cpc else "—",
                 "CPC lokaal":   f"€{local_decision.campaign_cpc_cents/100:.2f}" if local_decision.campaign_cpc_cents
                                 else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "lokaal") if local_adgroup_cpc else "—",
-                "Waarschuwingen": "; ".join(stad_decision.warnings + local_decision.warnings),
+                "Waarschuwingen": "; ".join(
+                    list(stad_decision.warnings + local_decision.warnings)
+                    + _local_adgroup_account_warnings(local_adgroup_cpc, city, _klant_cpc_account)
+                ),
             })
             if progress_cb:
                 progress_cb(city, i, total, skipped=False, stad_excluded=stad_excluded)
