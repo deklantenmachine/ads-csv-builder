@@ -323,6 +323,15 @@ if st.session_state.results is not None:
         if dry_rows:
             st.header("Bouwplan (dry-run)")
             st.dataframe(pd.DataFrame(dry_rows), use_container_width=True, hide_index=True)
+            # Waarschuwingen uit de tabel samenvoegen en apart tonen
+            _row_warns = [
+                w
+                for row in dry_rows
+                for w in (row.get("Waarschuwingen") or "").split("; ")
+                if w.strip()
+            ]
+            if _row_warns:
+                st.warning("**Waarschuwingen:**\n" + "\n".join(f"- {w}" for w in _row_warns))
         if errors:
             st.warning("**Meldingen:**\n" + "\n".join(errors))
 
