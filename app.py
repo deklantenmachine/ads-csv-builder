@@ -528,16 +528,21 @@ with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
                 _res = _av("[Klantnaam] In [Plaats]", _city, _vars, merk_info, col="Headline 2")
                 _res2 = _aet(_res, _city, merk_info, None, col="Headline 2")
                 st.write(f"[Klantnaam] In [Plaats] + {_city} → **{_res2}**")
-            # Test Description 3 placeholder vervanging
-            _desc3_tmpl = "[AantalJaren] Jaar Garantie, [ReviewDescription] en 24 op 24 bereikbaar bij dringende dakproblemen."
-            _desc3_key = _desc3_tmpl.lower()
-            st.write(f"**Desc3 key in variants:** `{_desc3_key in _vars}`")
-            if _desc3_key in _vars:
-                st.write(f"  regel: `{_vars[_desc3_key]['rule_info']}`")
-            _desc3_res = _av(_desc3_tmpl, "Alken", _vars, merk_info, col="Description 3")
-            st.write(f"**Desc3 Alken (5 chars):** `{_desc3_res}`")
-            _desc3_res2 = _av(_desc3_tmpl, "Brussel", _vars, merk_info, col="Description 3")
-            st.write(f"**Desc3 Brussel (7 chars):** `{_desc3_res2}`")
+            # Toon werkelijke Description 3 waarden uit stad-sjabloon
+            if _dbg_sta:
+                import io as _io2
+                _df_sta2 = _pd.read_csv(_io2.BytesIO(_dbg_sta), sep=";", encoding="utf-8-sig", low_memory=False)
+                _d3_cols = [c for c in _df_sta2.columns if "description 3" in c.lower() or "description3" in c.lower()]
+                st.write(f"**Description 3 kolommen in sjabloon:** {_d3_cols}")
+                for _dc in _d3_cols:
+                    _d3_vals = _df_sta2[_dc].dropna().unique().tolist()
+                    st.write(f"**Unieke waarden in `{_dc}`:**")
+                    for _dv in _d3_vals[:10]:
+                        _dv_str = str(_dv)
+                        _dv_key = _dv_str.lower()
+                        _in_vars = _dv_key in _vars
+                        _result = _av(_dv_str, "Alken", _vars, merk_info, col=_dc)
+                        st.write(f"  - `{_dv_str}` → key in variants: `{_in_vars}` → uitkomst: **`{_result}`**")
 
 st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
