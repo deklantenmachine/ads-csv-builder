@@ -483,12 +483,18 @@ def _apply_eigen_placeholders(
     text = text.replace("[Bedrijfsnaam]", bedrijfsnaam)
 
     text = text.replace("[ReviewScore]",   merk_info.get("review_score",    ""))
-    text = text.replace("[JarenGarantie]", merk_info.get("jaren_garantie", ""))
+    _jaren = merk_info.get("jaren_garantie", "")
+    text = text.replace("[JarenGarantie]", _jaren)
+    text = text.replace("[AantalJaren]",   _jaren)
 
     rs = merk_info.get("review_score", "").strip()
     if rs:
-        text = text.replace("[ReviewHeadline]",   f"Beoordeeld met {rs} sterren")
-        text = text.replace("[ReviewDescription]", f"beoordeeld met {rs} sterren")
+        text = text.replace("[ReviewHeadline]",    f"Beoordeeld met {rs} sterren")
+        text = text.replace("[ReviewDescription]",  f"beoordeeld met {rs} sterren")
+    else:
+        # Geen score: lege string zodat placeholder niet letterlijk in de output staat
+        text = text.replace("[ReviewHeadline]",    "")
+        text = text.replace("[ReviewDescription]",  "")
 
     return text
 
