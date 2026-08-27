@@ -514,11 +514,30 @@ with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
         st.write(f"**Aantal varianten geladen:** {len(_vars)}")
         _test_keys = [k for k in _vars if "bedrijfsnaam" in k and "in" in k]
         st.write(f"**Relevante keys:** {_test_keys}")
+        # Toon alle keys met AantalJaren/ReviewDescription
+        _aj_keys = {k: v for k, v in _vars.items() if "aantaljaren" in k or "reviewdescription" in k}
+        st.write(f"**Keys met [AantalJaren]/[ReviewDescription]:** {len(_aaj_keys := _aj_keys)}")
+        for _k, _v in _aaj_keys.items():
+            st.write(f"- `{_k}` → regel: `{_v['rule_info']}`, lange: `{_v['lange_raw']}`")
+
+        if eigen_merk:
+            st.write(f"**merk_info:** `{merk_info}`")
+
         if eigen_merk and merk_info and merk_info.get("korte_naam"):
             for _city in ["Alblasserdam", "Capelle aan den IJssel"]:
                 _res = _av("[Klantnaam] In [Plaats]", _city, _vars, merk_info, col="Headline 2")
                 _res2 = _aet(_res, _city, merk_info, None, col="Headline 2")
                 st.write(f"[Klantnaam] In [Plaats] + {_city} → **{_res2}**")
+            # Test Description 3 placeholder vervanging
+            _desc3_tmpl = "[AantalJaren] Jaar Garantie, [ReviewDescription] en 24 op 24 bereikbaar bij dringende dakproblemen."
+            _desc3_key = _desc3_tmpl.lower()
+            st.write(f"**Desc3 key in variants:** `{_desc3_key in _vars}`")
+            if _desc3_key in _vars:
+                st.write(f"  regel: `{_vars[_desc3_key]['rule_info']}`")
+            _desc3_res = _av(_desc3_tmpl, "Alken", _vars, merk_info, col="Description 3")
+            st.write(f"**Desc3 Alken (5 chars):** `{_desc3_res}`")
+            _desc3_res2 = _av(_desc3_tmpl, "Brussel", _vars, merk_info, col="Description 3")
+            st.write(f"**Desc3 Brussel (7 chars):** `{_desc3_res2}`")
 
 st.header("2. Sjabloon-bestanden")
 col1, col2 = st.columns(2)
