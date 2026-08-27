@@ -1234,6 +1234,9 @@ def build_all(
         for err in stad_decision.blocking_errors + local_decision.blocking_errors:
             errors.append(f"Blokkerend: {err}")
 
+        # Bepaal verwacht CPC-account voor eigenaarschapswaarschuwing (local_adgroup_cpc)
+        _klant_cpc_account = _klant_cpc_accounts.get(klant, "")
+
         # Dry-run: registreer beslissingen en ga door zonder te bouwen
         if dry_run:
             stad_skip_reason = (
@@ -1279,9 +1282,6 @@ def build_all(
 
         if klant not in results:
             results[klant] = {"lokaal": [], "stad": []}
-
-        # Bepaal verwacht CPC-account voor eigenaarschapswaarschuwing (local_adgroup_cpc)
-        _klant_cpc_account = _klant_cpc_accounts.get(klant, "")
 
         # Lokale campagne
         if local_decision.should_build and len(lok_df) > 0:
