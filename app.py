@@ -521,7 +521,9 @@ with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
             st.write(f"- `{_k}` → regel: `{_v['rule_info']}`, lange: `{_v['lange_raw']}`")
 
         if eigen_merk:
-            st.write(f"**merk_info:** `{merk_info}`")
+            st.write(f"**merk_info (huidig UI):** `{merk_info}`")
+            _saved_mi = (st.session_state.get("build_kwargs") or {}).get("merk_info")
+            st.write(f"**merk_info in build_kwargs (session state):** `{_saved_mi}`")
             # Test _apply_eigen_placeholders direct
             from builder import _apply_eigen_placeholders as _aep
             _aep_in  = "[AantalJaren] jaar garantie, [ReviewDescription] en 24 op 24 bereikbaar bij dringende dakproblemen."
