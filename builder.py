@@ -961,6 +961,7 @@ def _apply_local_adgroup_cpc(
     city:         str,
     cpc_type:     str,   # "stad" of "lokaal"
     klant_account: str = "",  # verwacht account van de huidige klant (voor eigenaarschapswaarschuwing)
+    city_override: str = "",  # "keep" | "nieuwe_plaats" — expliciete keuze van de bouwer
 ) -> tuple[pd.DataFrame, list[str]]:
     """
     Past CPC's toe uit het lokale adgroup/keyword-CPC-bestand (BE Dakdekker).
@@ -980,7 +981,13 @@ def _apply_local_adgroup_cpc(
     city_lower   = city.strip().lower()
     type_lower   = cpc_type.lower()
 
-    warnings.extend(_local_adgroup_account_warnings(cpc_data, city, klant_account))
+    # Waarschuwing tonen tenzij de bouwer al een expliciete keuze heeft gemaakt
+    if city_override not in ("keep", "nieuwe_plaats"):
+        warnings.extend(_local_adgroup_account_warnings(cpc_data, city, klant_account))
+
+    # Bij "nieuwe_plaats" override: negeer stad-specifieke CPC's, gebruik alleen fallback
+    if city_override == "nieuwe_plaats":
+        city_lower = "_force_nieuwe_plaats_"  # matcht nooit een echte stad → valt terug op fallback
 
     df = df.copy()
     # Zorg dat CPC-kolommen string kunnen opslaan (float64 geeft dtype-conflict)
@@ -1134,6 +1141,7 @@ def build_all(
     land:                 str = "NL",  # "NL" of "BE" — alleen gebruikt met keyword_cpc_sheet
     merktype_cpc:         str = "",    # merktype-string zoals in CPC-blad
     is_portaal:           bool = False, # voor account-vertaling in keyword_cpc_sheet
+    cpc_city_overrides: dict | None = None,  # {city_lower: "keep" | "nieuwe_plaats"}
 ) -> tuple[dict, list[str]]:
 
     # Overschrijf template-placeholders als de branche andere waarden gebruikt
@@ -1258,7 +1266,11 @@ def build_all(
                                 else _local_adgroup_cpc_preview(local_adgroup_cpc, city, "lokaal") if local_adgroup_cpc else "—",
                 "Waarschuwingen": "; ".join(
                     list(stad_decision.warnings + local_decision.warnings)
-                    + _local_adgroup_account_warnings(local_adgroup_cpc, city, _klant_cpc_account)
+                    + (
+                        _local_adgroup_account_warnings(local_adgroup_cpc, city, _klant_cpc_account)
+                        if (cpc_city_overrides or {}).get(city.strip().lower(), "") not in ("keep", "nieuwe_plaats")
+                        else []
+                    )
                 ),
             })
             if progress_cb:
@@ -1291,7 +1303,8 @@ def build_all(
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 lok_df = _apply_keyword_cpc_sheet(lok_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
             elif local_adgroup_cpc:
-                lok_df, _cpc_warns = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal", _klant_cpc_account)
+                _city_ov = (cpc_city_overrides or {}).get(city.strip().lower(), "")
+                lok_df, _cpc_warns = _apply_local_adgroup_cpc(lok_df, local_adgroup_cpc, city, "lokaal", _klant_cpc_account, _city_ov)
                 errors.extend(_cpc_warns)
             else:
                 lok_df = _apply_cpc_to_df(
@@ -1312,7 +1325,8 @@ def build_all(
                 _sv_account = _resolve_sv_cpc_account(klant, is_portaal)
                 sta_df = _apply_keyword_cpc_sheet(sta_df, keyword_cpc_sheet, land, merktype_cpc, _sv_account, city)
             elif local_adgroup_cpc:
-                sta_df, _cpc_warns = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad", _klant_cpc_account)
+                _city_ov = (cpc_city_overrides or {}).get(city.strip().lower(), "")
+                sta_df, _cpc_warns = _apply_local_adgroup_cpc(sta_df, local_adgroup_cpc, city, "stad", _klant_cpc_account, _city_ov)
                 errors.extend(_cpc_warns)
             else:
                 sta_df = _apply_cpc_to_df(

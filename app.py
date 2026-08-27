@@ -299,6 +299,7 @@ _defaults = {
     "build_files":      None,   # raw bytes {"lokaal", "stad", "variants"} for re-run
     "kw_cpc_sheet":     None,   # KeywordCpcSheet instance (Schoorsteenveger)
     "kw_cpc_sheet_key": "",     # "{branch}|{url}|{tab}" — invalideer cache bij wijziging
+    "cpc_overrides":    {},     # {city_lower: "keep" | "nieuwe_plaats"}
 }
 for key, default in _defaults.items():
     if key not in st.session_state:
@@ -323,15 +324,42 @@ if st.session_state.results is not None:
         if dry_rows:
             st.header("Bouwplan (dry-run)")
             st.dataframe(pd.DataFrame(dry_rows), use_container_width=True, hide_index=True)
-            # Waarschuwingen uit de tabel samenvoegen en apart tonen
-            _row_warns = [
+            # Waarschuwingen splitsen in account-mismatch (met knoppen) en overige
+            _mismatch_rows = [
+                row for row in dry_rows
+                if "staat in het CPC-bestand bij" in (row.get("Waarschuwingen") or "")
+            ]
+            _other_warns = [
                 w
                 for row in dry_rows
                 for w in (row.get("Waarschuwingen") or "").split("; ")
-                if w.strip()
+                if w.strip() and "staat in het CPC-bestand bij" not in w
             ]
-            if _row_warns:
-                st.warning("**Waarschuwingen:**\n" + "\n".join(f"- {w}" for w in _row_warns))
+            if _mismatch_rows:
+                st.subheader("CPC-waarschuwingen")
+                for _mrow in _mismatch_rows:
+                    _mc = _mrow["Plaats"].strip().lower()
+                    _ov = st.session_state.cpc_overrides.get(_mc, "")
+                    _cols = st.columns([3, 1, 1])
+                    with _cols[0]:
+                        if _ov == "keep":
+                            st.success(f"✅ **{_mrow['Plaats']}** — CPC van ander account aangehouden.")
+                        elif _ov == "nieuwe_plaats":
+                            st.success(f"🔄 **{_mrow['Plaats']}** — aangepast naar 'Nieuwe plaats' CPC.")
+                        else:
+                            st.warning(_mrow["Waarschuwingen"])
+                    with _cols[1]:
+                        if st.button("✅ Houd CPC aan", key=f"cpc_keep_{_mc}",
+                                     disabled=_ov == "keep"):
+                            st.session_state.cpc_overrides[_mc] = "keep"
+                            st.rerun()
+                    with _cols[2]:
+                        if st.button("🔄 Nieuwe plaats CPC", key=f"cpc_new_{_mc}",
+                                     disabled=_ov == "nieuwe_plaats"):
+                            st.session_state.cpc_overrides[_mc] = "nieuwe_plaats"
+                            st.rerun()
+            if _other_warns:
+                st.warning("**Overige meldingen:**\n" + "\n".join(f"- {w}" for w in _other_warns))
         if errors:
             st.warning("**Meldingen:**\n" + "\n".join(errors))
 
@@ -911,6 +939,7 @@ if st.button("🚀 Genereer campagnes", type="primary"):
                 land                   = selected_land,
                 merktype_cpc           = _merktype_cpc,
                 is_portaal             = not eigen_merk,
+                cpc_city_overrides     = st.session_state.get("cpc_overrides") or {},
             )
             if dry_run:
                 st.session_state.build_kwargs = _shared_kwargs
