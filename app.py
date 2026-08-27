@@ -522,6 +522,13 @@ with st.expander("🔍 Debug: laadstatus bestanden", expanded=False):
 
         if eigen_merk:
             st.write(f"**merk_info:** `{merk_info}`")
+            # Test _apply_eigen_placeholders direct
+            from builder import _apply_eigen_placeholders as _aep
+            _aep_in  = "[AantalJaren] jaar garantie, [ReviewDescription] en 24 op 24 bereikbaar bij dringende dakproblemen."
+            _aep_out = _aep(_aep_in, merk_info, "Alken") if merk_info else "(merk_info is None)"
+            st.write(f"**_apply_eigen_placeholders direct:** `{_aep_out}`")
+            import builder as _b
+            st.write(f"**builder.py pad:** `{_b.__file__}`")
 
         if eigen_merk and merk_info and merk_info.get("korte_naam"):
             for _city in ["Alblasserdam", "Capelle aan den IJssel"]:
